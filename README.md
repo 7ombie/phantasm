@@ -1,5 +1,5 @@
-PHANTASM: Portable, Hardened, Asynchronous, Natively Typed, Abstract Stack Machine
-==================================================================================
+The PHANTASM Web Assembler
+==========================
 
 PHANTASM is an assembler that allows you to author WebAssembly modules in a nice, modern
 language, instead of repurposing the WebAssembly Text Format.
