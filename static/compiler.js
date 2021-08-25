@@ -2222,31 +2222,26 @@ const IEEE754 = stack(function(push, pop, width, input) {
     for (const byte of bytes) push(byte);
 });
 
-// the compiler entrypoint (which needs completely refactoring, once done)...
+// the compiler entrypoint...
 
 export const compile = function * (configuration) {
 
-    // Stage Zero...
+    // Stage Zero: Reset everything (so multiple modules can be compiled)...
 
     reset(configuration);
 
-    // Stage One...
+    // Stage One: divide statements by type, handling type and bank definitions
+    // immediately, sorting everything else into arrays for the next stages...
 
-    const statements = {imports: [], definitions: [], exports: []};
+    const [imports, definitions, exports] = [[], [], []];
 
     for (const statement of parse(configuration)) {
 
         const component = statement.component;
 
-        if (statement instanceof ImportStatement) {
-
-            statements.imports.push(statement);
-
-        } else if (statement instanceof ExportStatement) {
-
-            statements.exports.push(statement);
-
-        } else {
+        if (statement instanceof ImportStatement) imports.push(statement);
+        else if (statement instanceof ExportStatement) exports.push(statement);
+        else {
 
             if (component.name === "type") {
 
@@ -2263,13 +2258,13 @@ export const compile = function * (configuration) {
                 component.index = registerComponent("tablebank", component, true);
                 new TableBankSegment(component.primer);
 
-            } else statements.definitions.push(statement);
+            } else definitions.push(statement);
         }
     }
 
-    // Stage Two...
+    // Stage Two: Handle all of the import statements...
 
-    for (const statement of statements.imports) {
+    for (const statement of imports) {
 
         const component = statement.component;
 
@@ -2277,25 +2272,26 @@ export const compile = function * (configuration) {
         SECTIONS[2].append(statement);
     }
 
-    // Stage Three...
+    // Stage Three: Handle the remaining define statements (types and banks
+    // have already been dealt with)...
 
-    for (const statement of statements.definitions) {
+    for (const statement of definitions) {
 
         const component = statement.component;
-        const sections = {function: 3, table: 4, memory: 5, register: 6};
+        const sectionIDs = {function: 3, table: 4, memory: 5, register: 6};
 
-        if (component.name in sections) {
+        if (component.name in sectionIDs) {
 
             component.index = registerComponent(component.name, component, true);
-            SECTIONS[sections[component.name]].append(statement);
+            SECTIONS[sectionIDs[component.name]].append(statement);
         }
     }
 
-    // Stage Four...
+    // Stage Four: Handle any export statements...
 
-    for (const statement of statements.exports) SECTIONS[7].append(statement);
+    for (const statement of exports) SECTIONS[7].append(statement);
 
-    // Stage Five...
+    // Stage Five: Compile the module and yield the result (bytewise)...
 
     yield * header;
 
