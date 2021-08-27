@@ -1786,11 +1786,11 @@ instructions.expand = class EXPAND extends Instruction {
 
     parse() {
 
-        this.operand = requireSignedDatatype();
-        requireKeyword("to");
+        this.type = requireIntegerNumtype();
+        requireKeyword("as");
 
-        if (this.operand.value === s32) this.result = requirePrimitiveType(i64);
-        else this.result = requireIntegerNumtype();
+        if (this.type.value === i64) this.datatype = requireSignedDatatype();
+        else this.datatype = requireLesserSignedDatatype();
     }
 }
 
@@ -2306,6 +2306,11 @@ const requireLesserDatatype = requireGivenType(
 const requireSignedDatatype = requireGivenType(
     "the `s8`, `s16` or `s32`",
     s8, s16, s32
+);
+
+const requireLesserSignedDatatype = requireGivenType(
+    "the `s8` or `s16`",
+    s8, s16
 );
 
 const requireUnsignedDatatype = requireGivenType(

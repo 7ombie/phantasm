@@ -1589,7 +1589,7 @@ class CodeSection extends VectorSection {
             i64: {s8: 0xC2, s16: 0xC3, s32: 0xC4}
         };
 
-        yield opcodes[instruction.result.value][instruction.operand.value];
+        yield opcodes[instruction.type.value][instruction.datatype.value];
     }
 
     * EXTEND(instruction) {
