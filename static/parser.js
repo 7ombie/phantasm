@@ -2756,7 +2756,7 @@ const reset = function(configuration) {
     [GLOBAL_CONTEXT, START] = [true, false];
 };
 
-/* --{  THE FRONTEND PARSE FUNCTION }----------------------------------------------------------- */
+/* --{ THE PARSER ENTRYPOINT }---------------------------------------------- */
 
 export const parse = function * (configuration) {
 

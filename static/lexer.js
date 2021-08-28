@@ -853,7 +853,7 @@ const reset = function(configuration) {
     [LINE_NUMBER, LINE_HEAD] = [1, -1];
 };
 
-/* --{ THE FRONTEND LEX FUNCTION }------------------------------------------ */
+/* --{ THE LEXER ENTRYPOINT }----------------------------------------------- */
 
 export const lex = function * (configuration) {
 
