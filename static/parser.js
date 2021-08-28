@@ -519,10 +519,10 @@ class BoundsError extends ParserError {
     constructor(literal, direction, width, signed) {
 
         /* The `literal` argument is the offending `NumberLiteral` instance.
-        The `direction` argument (a string) describes the number as too "high"
-        or "low". The `width` argument is the expected width of the integer (8,
-        16, 32 or 64), and the `signed` argument is a bool that is `true` for
-        signed integers, and `false` for unsigned. */
+        The `direction` argument (a string) describes the literal as being too
+        "high" or "low". The `width` argument is the expected width (8, 16, 32
+        or 64, in practice). The `signed` argument is a bool that is `true`
+        for signed integers, and `false` for unsigned. */
 
         const bits = " " + width + "-bit ";
         const type = (signed ? "a signed" : "an unsigned") + bits + "integer";
@@ -540,11 +540,11 @@ class UnspecifiedElementError extends ParserError {
 
     constructor(description) {
 
-        /* The `description` argument describes the type of primer (in practice,
-        either "a memory" or "a mixed-table"). */
+        /* The `description` argument describes the type of primer (either
+        "memory" or "table", in practice). */
 
-        const template = "Each segment in {0.s} primer " +
-                         "must begin with a directive.";
+        const template = "Each element in a {0.s} primer " +
+                         "must be part of a directive.";
         advance();
         super(format(template, description));
     }
@@ -552,36 +552,39 @@ class UnspecifiedElementError extends ParserError {
 
 class UntypedParameterError extends ParserError {
 
-    /* Thrown when a signature does not begin with the type of its parameters. */
+    /* Thrown when a signature does not begin with the type of its
+    parameters. */
 
     constructor() {
 
-        super("Signature parameters must be typed.");
+        super("Signature parameters must specify a reftype.");
     }
 }
 
 class UntypedLocalError extends ParserError {
 
-    /* Thrown when a local statement does not begin by specifying the type of the
-    given locals. */
+    /* Thrown when a local statement does not begin by specifying the type
+    of the given locals. */
 
     constructor() {
 
-        super("Local definitions must be typed.");
+        super("Local definitions must specify a reftype.");
     }
 }
 
 class SharedMemoryBankError extends ParserError {
 
-    /* Thrown when the user specifies a `shared memory bank` (which does not exist). */
+    /* Thrown when the user specifies a `shared memory bank` (which does not
+    exist). */
 
-    constructor(component) {
+    constructor(qualifier) {
 
-        /* The `component` argument is the `shared` Qualifier token. */
+        /* The `component` argument is the `shared` Qualifier token, which is
+        no longer the token the parser is on. */
 
-        const options = component.location;
+        const options = qualifier.location;
 
-        options.text = "Cannot define a `shared memory bank`.";
+        options.text = "Unknown component type (`shared memory bank`).";
         super(options);
     }
 }
@@ -592,22 +595,22 @@ class ExpectedInlinePrimerError extends ParserError {
 
     constructor(description) {
 
-        /* The `description` argument is a string that describes the primer type
-        (one of "memory" or "table"). */
+        /* The `description` argument is a string that describes the primer
+        type ("memory" or "table"). */
 
-        const text = "Expected inline-{0.s} primer, but the line ended suddenly.";
+        const text = "Expected inline-{0.s} primer (not a newline).";
 
         super(format(text, description));
     }
 }
 
-/* --{ ABSTRACT BASE CLASSES FOR AST NODES }---------------------------------------------------- */
+/* --{ ABSTRACT BASE CLASSES FOR AST NODES }-------------------------------- */
 
 export class Statement extends Node {
 
-    /* This is the abstract base class for all statements, which extends `Node`
-    to add a `component` attribute that is used to store a definition, specif-
-    ication or reference to a component, implemented with `Component` subclass. */
+    /* This is the abstract base class for all statements. It extends `Node`
+    to add a `component` attribute that is used to store a component defini-
+    tion, specification or reference, implemented by a `Component` subclass. */
 
     constructor(component, location) {
 
@@ -658,10 +661,12 @@ export class Instruction extends Node {
 
         if (this.parse(expression) || not(expression)) return;
 
-        throw new ConstantError(this, format("The {0.V} instruction is", operation));
+        const text = format("The {0.V} instruction is", operation);
+
+        throw new ConstantError(this, text);
     }
 
-    parse() { /* Inherited by plain instructions (like `nop` and `return`). */ }
+    parse() { /* Used by plain instructions (like `nop` and `return`). */ }
 }
 
 export class MemoryInstruction extends Instruction {
@@ -670,9 +675,9 @@ export class MemoryInstruction extends Instruction {
 
     parse() {
 
-        /* This generic parse method works for all memory instructions, except for
-        the (atomic and non-atomic) `store` instructions, and the non-atomic `load`
-        instruction, which each define their own `parse` methods. */
+        /* This generic parse method works for all memory instructions, except
+        the (atomic and non-atomic) `store` instructions, and the non-atomic
+        `load` instruction, which each define their own `parse` methods. */
 
         this.type = requireIntegerNumtype();
 
@@ -692,9 +697,9 @@ export class MemoryInstruction extends Instruction {
 
     resolveMemory() {
 
-        /* This helper method parses the optional `in <memory-identity>` part of
-        a memory instruction. It returns the `NumberLiteral` instance, or an imp-
-        licit zero, if no `in` keyword is found. */
+        /* This helper method parses the optional `in <memory-identity>` part
+        of a memory instruction. It returns the `NumberLiteral` instance, or
+        an implicit zero instance, if no `in` keyword is found. */
 
         if (acceptKeyword("in")) this.memory = boundscheck(require(Identity));
         else this.memory = new ImplicitNumber(0, this.location);
@@ -702,12 +707,15 @@ export class MemoryInstruction extends Instruction {
 
     resolveOffset() {
 
-        /* This helper method parses the optional `at <offset>` part of a memory
-        instruction. It returns the `NumberLiteral` instance, or an implicit zero,
-        if no `at` keyword is found. */
+        /* This helper method parses the optional `at <offset>` part of a
+        memory instruction. It returns the `NumberLiteral` instance, or an
+        implicit zero instance, if no `at` keyword is found. */
 
-        if (acceptKeyword("at")) this.offset = boundscheck(require(NumberLiteral));
-        else this.offset = new ImplicitNumber(0, this.location);
+        if (acceptKeyword("at")) {
+
+            this.offset = boundscheck(require(NumberLiteral));
+
+        } else this.offset = new ImplicitNumber(0, this.location);
     };
 }
 
@@ -715,7 +723,7 @@ export class BlockInstruction extends Instruction {
 
     /* This class extends `Instruction` to add a generic `parse` method that
     works for all block instructions (`block`, `loop`, and `branch`). It also
-    handles else-blocks, following branch-blocks. */
+    handles else-blocks (following branch-blocks). */
 
     parse() {
 
@@ -742,12 +750,12 @@ export class BlockInstruction extends Instruction {
 
 class Else extends BlockInstruction {
 
-    /* This is a concrete class for the else-block that optionally follow branch-
-    blocks. The class inherits everything it needs from its parents, and the `parse`
-    method of `BlockInstruction` will call `requireIndentedBlock` on any instance of
-    `Else` as soon it is instantiated, so there is nothing to do here, except prevent
-    the `BlockInstruction.parse` method from being inherited, (as that would cause it
-    to be indirectly invoked again, recursively). */
+    /* This is a concrete class for the else-block that optionally follows any
+    branch-block. The class inherits everything it needs from its parents, and
+    the `parse method of `BlockInstruction` will invoke `requireIndentedBlock`
+    on any instance of `Else`, as soon it is instantiated, so there is nothing
+    to do here, except prevent the `BlockInstruction.parse` method from being
+    inherited (else it would be indirectly invoked again, recursively). */
 
     parse() {}
 }
@@ -760,35 +768,38 @@ class RegisterAccessInstruction extends Instruction {
         get [<scope>] <identity>            <scope>.get <identity>
         set [<scope>] <identity>            <scope>.set <identity
 
-    Note: In PHANTASM, `tee` is named `put` and is a simple `IdentifiedInstruction`.
+    Note: In PHANTASM, `tee` is named `put`, and has no scope qualifier.
 
-    All instructions have a `operation` attribute that stores the mnemonic (as
-    well as having a `location` hash, common to all `Node` subclasses). This class
-    adds three more attributes:
+    All instructions have a `operation` property that stores the mnemonic (as
+    a token instance), as well as having the `location` hash that is common to
+    all `Node` subclasses). This class adds three more attributes:
 
-    + `scope`: A `local` or `global` qualifier node, or a `table` component node,
-       representing the target of the operation.
-    + `global`: A bool that is `true` if the scope is global, `false` if local,
-       which may be defined explicitly or implicitly.
-    + `identity`: A `NumberLiteral` or `Identifier` node that may be explicit or
-       implicitly zero when the `scope` is `table`.
+    + `scope`: A `local` or `global` qualifier node, or a `table` component
+       node, representing the target of the operation.
+    + `global`: A bool that is `true` if the scope is global, and `false` if
+       local (which may be defined explicitly or inferred).
+    + `identity`: A `NumberLiteral` or `Identifier` node must be explicitly
+       set, unless `scope` is `table`, where it can be implicitly zero.
 
-    Note: This method takes note of whether the context is a constant expression,
+    This method takes note of whether the context is a constant expression,
     as `get` is valid in expressions, but only if its scope is `global`. */
 
     parse(expression) {
-
-        const stringifyContext = () => GLOBAL_CONTEXT ? "global" : "local";
 
         if (expression && evaluate(this.operation, "set")) return undefined;
 
         if (atToken(Component, "table")) { // `get table`...
 
-            if (expression) throw new ConstantError(this, "The `get table` operation");
+            if (expression) {
+
+                throw new ConstantError(this, "The `get table` operation");
+            }
 
             this.scope = advance();
             this.global = GLOBAL_CONTEXT;
-            this.identity = boundscheck(requireOptionalIdentity(this.scope.location));
+            this.identity = requireOptionalIdentity(this.scope.location);
+
+            boundscheck(this.identity);
 
         } else { // `get local` or `get global`...
 
@@ -802,13 +813,15 @@ class RegisterAccessInstruction extends Instruction {
 
             } else {
 
-                this.scope = new ImplicitQualifier(stringifyContext(), this.location);
+                const context = GLOBAL_CONTEXT ? "global" : "local";
+
+                this.scope = new ImplicitQualifier(context, this.location);
                 this.global = GLOBAL_CONTEXT;
             }
 
             this.identity = boundscheck(require(Identity));
 
-            return true; // any issue with expressions would be raised by now
+            return true; // any issue would have been raised by now
         }
     }
 }
@@ -867,7 +880,9 @@ class ArrayReferenceInstruction extends Instruction {
     parse() {
 
         this.component = requireComponent("memory", "table");
-        this.identity = boundscheck(requireOptionalIdentity(this.component.location));
+        this.identity = requireOptionalIdentity(this.component.location);
+
+        boundscheck(this.identity);
     }
 }
 
@@ -882,15 +897,16 @@ class ArrayTransferInstruction extends Instruction {
         this.component = requireComponent("memory", "table");
         this.bank = acceptKeyword("bank");
 
+        const location = this.component.location;
+
         if (this.bank) this.identity = boundscheck(require(Identity));
-        else {
+        else this.identity = boundscheck(requireOptionalIdentity(location));
 
-            this.identity = requireOptionalIdentity(this.component.location);
-            boundscheck(this.identity);
-        }
+        if (acceptKeyword("to")) {
 
-        if (acceptKeyword("to")) this.destination = boundscheck(require(Identity));
-        else this.destination = new ImplicitNumber(0, this.component.location);
+            this.destination = boundscheck(require(Identity));
+
+        } else this.destination = new ImplicitNumber(0, location);
     }
 }
 
@@ -912,7 +928,10 @@ class OptionallyIdentifiedInstruction extends Instruction {
     all instructions that optionally specify an index as an identity (a number
     literal or an identifier bound to the index), defaulting to zero. */
 
-    parse() { this.identity = boundscheck(requireOptionalIdentity(this.location)) }
+    parse() {
+
+        this.identity = boundscheck(requireOptionalIdentity(this.location));
+    }
 }
 
 class MultiIdentifiedInstruction extends Instruction {
@@ -921,7 +940,10 @@ class MultiIdentifiedInstruction extends Instruction {
     all instructions that optionally specify one or more indices as identities
     (each a number literal or an identifier bound to the index). */
 
-    parse() { this.identities = requireIdentities().map(id => boundscheck(id)) }
+    parse() {
+
+        this.identities = requireIdentities().map(id => boundscheck(id));
+    }
 }
 
 class CarouselInstruction extends Instruction {
@@ -933,10 +955,6 @@ class CarouselInstruction extends Instruction {
 
         const check = (description, ...types) => {
 
-            /* This internal helper takes a string that describes a set of types,
-            followed by the names of the types, and checks that `this.type` is of
-            the given list, using the description to complain if not. */
-
             if (evaluate(this.type, ...types)) return;
             else throw new InvalidPrimitiveError(description, this);
         };
@@ -944,9 +962,11 @@ class CarouselInstruction extends Instruction {
         this.type = require(Primitive);
         this.qualifier = acceptQualifier(left, right);
 
-        // check that the instruction, type and qualifier are valid together...
+        const qualifier = this.qualifier;
 
-        if (nameInstruction(this) === "rotate" || evaluate(this.qualifier, left)) {
+        // check that the mnemonic, type and qualifier are valid together...
+
+        if (nameInstruction(this) === "rotate" || evaluate(qualifier, left)) {
 
             check("a sign-agnostic integer", i32, i64);
 
@@ -954,23 +974,23 @@ class CarouselInstruction extends Instruction {
     }
 }
 
-/* --{ ABSTRACT BASE CLASSES FOR COMPONENT NODES }----------------------------------------------- */
+/* --{ ABSTRACT BASE CLASSES FOR COMPONENT NODES --------------------------- */
 
 class ComponentDescriptor extends Node {
 
-    /* This is the abstract base class for all component descriptors (specifiers,
-    definitions and references). */
+    /* This is the abstract base class for component descriptors (specifiers,
+    definitions and references). It exists as part of the type hierarchy. */
 }
 
 class ComponentDefinition extends ComponentDescriptor {
 
-    /* This is the abstract base class for all component definitions, which are
-    used by all define-statements. */
+    /* This is the abstract base class for all component definitions, which
+    are used by all define-statements. */
 
     constructor(location) {
 
-        /* This constructor adds an index to component definitions, which is used
-        by the compiler. */
+        /* This constructor adds an `index` property to component definitions,
+        which will be assigned an index by the compiler. */
 
         super(location);
         this.index = undefined;
@@ -1040,7 +1060,7 @@ class ComponentReference extends ComponentDescriptor {
     }
 }
 
-/* --{ CONCRETE CLASSES FOR STATEMENT NODES }--------------------------------------------------- */
+/* --{ CONCRETE CLASSES FOR STATEMENT NODES }------------------------------- */
 
 export class DefineStatement extends Statement {
 
@@ -1086,17 +1106,16 @@ export class ExportStatement extends Statement {
     }
 }
 
-/* --{ CONCRETE CLASSES FOR DEFINITION NODES }-------------------------------------------------- */
+/* --{ CONCRETE CLASSES FOR DEFINITION NODES }------------------------------ */
 
 export class RegisterDefinition extends ComponentDefinition {
 
     /* Concrete class for registers definitions, which optionally define an
     identifier and initial value, and are either a `constant` or `variable`.
 
-    The initializer can be implied by omission or by a single token prefixed
-    by the as-keyword (like `as 1` or `as $foo`) or with a block of constant
-    instructions. For more information on how all this works, refer to the
-    docstring for `GlobalSection.encodeInitializer` in `compiler.js`. */
+    The initializer can be implied by omission, defined with a single token,
+    prefixed by the as-keyword (like `as 1` or `as $foo`), or defined by a
+    constant expression. */
 
     constructor(location) {
 
@@ -1134,7 +1153,7 @@ export class RegisterDefinition extends ComponentDefinition {
 export class LocalDefinition extends ComponentDefinition {
 
     /* Concrete class for each local register definition (usually combined
-    into a larger `local` statement defining multiple registers). */
+    into a larger `local` directive, defining multiple registers). */
 
     constructor(type, identifier, location) {
 
@@ -1146,7 +1165,7 @@ export class LocalDefinition extends ComponentDefinition {
 
 export class FunctionDefinition extends ComponentDefinition {
 
-    /* Concrete class for function definitions, as used by define-statements. */
+    /* Concrete class for function definitions. */
 
     constructor(location) {
 
@@ -1170,6 +1189,8 @@ export class MemoryDefinition extends ComponentDefinition {
 
     constructor(location) {
 
+        let min, max;
+
         super(location);
         this.shared = acceptQualifier(shared);
 
@@ -1180,8 +1201,6 @@ export class MemoryDefinition extends ComponentDefinition {
             if (this.shared) throw new SharedMemoryBankError(this.shared);
 
             this.name = "memorybank";
-            this.min = undefined;
-            this.max = undefined;
             this.identifier = accept(Identifier);
             this.primer = requirePrimer("memory", true);
             this.bank = true;
@@ -1190,14 +1209,16 @@ export class MemoryDefinition extends ComponentDefinition {
 
             this.identifier = accept(Identifier);
 
-            const [min, max] = this.shared ? requireFullLimits() : requireLimits();
+            if (this.shared) [min, max] = requireFullLimits()
+            else [min, max] = requireLimits();
 
             this.name = "memory";
-            this.min = boundscheck(min);
-            this.max = boundscheck(max);
             this.primer = requireOptionalPrimer("memory", false);
             this.bank = false;
         }
+
+        this.min = boundscheck(min);
+        this.max = boundscheck(max);
     };
 }
 
@@ -2624,7 +2645,7 @@ const requireMemoryElement = function(push, context, newline) {
 
     context = type || context;
 
-    if (not(context)) throw new UnspecifiedElementError("a memory");
+    if (not(context)) throw new UnspecifiedElementError("memory");
 
     if (context.value === "utf8") {
 
@@ -2645,7 +2666,7 @@ const requireTableElement = function(push, context, newline) {
 
     if (newline && not(type)) throw new BrokenDirectiveError(advance());
 
-    if (not(context = type || context)) throw new UnspecifiedElementError("a table");
+    if (not(context = type || context)) throw new UnspecifiedElementError("table");
 
     push(new TableElement(context, type, acceptKeyword("null") || require(Identity)));
 

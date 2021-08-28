@@ -306,7 +306,7 @@ export "table" as table
 
 source = `
 define constant i32 thus push -1
-define constant i32 thus push 3\\9
+define constant i32 thus push 4\\9
 `;
 
 const configuration = {

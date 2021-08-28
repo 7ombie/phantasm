@@ -2228,8 +2228,9 @@ const SLEB128 = stack(function(push, pop, input, agnostic=undefined) {
 
     if (agnostic) {
 
-        const upperbound = 2n ** BigInt(agnostic);
-        const decremented = BigInt(agnostic) - 1n;
+        const width = BigInt(agnostic);
+        const upperbound = 2n ** width;
+        const decremented = width - 1n;
 
         if (input >= 2n ** decremented) input -= upperbound;
     }
