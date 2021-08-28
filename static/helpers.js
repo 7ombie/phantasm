@@ -1,4 +1,7 @@
-/* --{ THE HELPERS LIBRARY }--{ /static/helpers.js }------------------------ */
+/* --{ THE HELPERS LIBRARY }--{ /static/helpers.js }------------------------ /*
+
+This little library exports a bunch of generic functions that are useful
+in almost every program. */
 
 export const put = console.log;
 
