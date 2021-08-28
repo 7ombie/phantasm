@@ -2816,7 +2816,7 @@ const requirePrimerStarter = function(inline, context) {
     } else require(Indent);
 };
 
-const nameNextComponent = function(description) { // 156
+const nameNextComponent = function(description) {
 
     /* The parser methods that handle specifiers and definitions all defer to
     helpers, based on the type of component that is being parsed. While valid
