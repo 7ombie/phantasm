@@ -371,7 +371,7 @@ export class Terminator extends Delimiter {
     constructor() { super("\u{23CE}") }
 }
 
-/* --{ THE GENERIC HELPER FUNCTIONS }--------------------------------------- */
+/* --{ THE LOCAL HELPER FUNCTIONS }----------------------------------------- */
 
 export const format = function(string, ...args) {
 
@@ -464,8 +464,6 @@ export const normalizeNumberLiteral = iife(function() {
         return string;
     };
 });
-
-/* --{ THE LEXER SPECIFIC HELPER FUNCTIONS }-------------------------------- */
 
 const advance = function() {
 
