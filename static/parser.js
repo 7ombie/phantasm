@@ -1263,8 +1263,11 @@ export class TableDefinition extends ComponentDefinition {
 
             if (qualifier !== "pointer") {
 
-                if (not(at(Terminator))) throw new UnexpectedPrimerError(qualifier);
-                else this.primer = [];
+                if (not(at(Terminator))) {
+
+                    throw new UnexpectedPrimerError(qualifier);
+
+                } else this.primer = [];
 
             } else this.primer = requireOptionalPrimer(qualifier, false);
         }
@@ -1286,7 +1289,7 @@ export class TypeDefinition extends ComponentDefinition {
     };
 }
 
-/* --{ CONCRETE CLASSES FOR SPECIFIER NODES }--------------------------------------------------- */
+/* --{ CONCRETE CLASSES FOR SPECIFIER NODES }------------------------------- */
 
 export class RegisterSpecifier extends ComponentSpecifier {
 
@@ -1360,44 +1363,59 @@ export class TableSpecifier extends ComponentSpecifier {
     };
 }
 
-/* --{ CONCRETE CLASSES FOR REFERENCE NODES }--------------------------------------------------- */
+/* --{ CONCRETE CLASSES FOR REFERENCE NODES }------------------------------- */
 
 export class RegisterReference extends ComponentReference {
 
     /* Concrete class for register references. */
 
-    constructor(location) { super(require(Identity), "register", location) }
+    constructor(location) {
+
+        super(require(Identity), "register", location);
+    }
 }
 
 export class FunctionReference extends ComponentReference {
 
     /* Concrete class for function references. */
 
-    constructor(location) { super(require(Identity), "function", location) }
+    constructor(location) {
+
+        super(require(Identity), "function", location);
+    }
 }
 
 export class MemoryReference extends ComponentReference {
 
     /* Concrete class for memory references. */
 
-    constructor(location) { super(requireOptionalIdentity(location), "memory", location) }
+    constructor(location) {
+
+        super(requireOptionalIdentity(location), "memory", location);
+    }
 }
 
 export class TableReference extends ComponentReference {
 
     /* Concrete class for table references. */
 
-    constructor(location) { super(requireOptionalIdentity(location), "table", location) }
+    constructor(location) {
+
+        super(requireOptionalIdentity(location), "table", location);
+    }
 }
 
 export class TypeReference extends ComponentReference {
 
     /* Concrete class for type references. */
 
-    constructor(identity, location) { super(identity, "type", location) }
+    constructor(identity, location) {
+
+        super(identity, "type", location);
+    }
 }
 
-/* --{ CONCRETE CLASSES FOR ELEMENT NODES }----------------------------------------------------- */
+/* --{ CONCRETE CLASSES FOR ELEMENT NODES }--------------------------------- */
 
 export class TypeExpression extends Node {
 
@@ -1481,12 +1499,12 @@ export class SegmentElement extends Node {
         super(CURRENT_TOKEN.location);
         this.block = [];
 
-        if (acceptKeyword("at")) {                  // at-integer shorthand
+        if (acceptKeyword("at")) {              // at-integer shorthand
 
             this.block.push(boundscheck(require(NumberLiteral)));
             require(Terminator);
 
-        } else if (acceptKeyword("thus")) {         // inline block expression
+        } else if (acceptKeyword("thus")) {     // inline block expression
 
             requireInlineBlock(this);
 
@@ -1494,11 +1512,11 @@ export class SegmentElement extends Node {
 
             require(Terminator);
 
-        } else requireIndentedBlock(this);          // indented block expression
+        } else requireIndentedBlock(this);      // indented block expression
     }
 }
 
-/* --{ INITIALIZE THE INSTRUCTIONS NAMESPACE }-------------------------------------------------- */
+/* --{ INITIALIZE THE INSTRUCTIONS NAMESPACE }------------------------------ */
 
 const instructions = Object.create(null);
 
@@ -1617,8 +1635,8 @@ instructions.push = class PUSH extends Instruction {
         push <numtype> <number-literal>     <numtype>.const <number-literal>
         push <number-literal>               i32.const <number-literal>
 
-    All four forms are valid in a constant expression (engine support for the
-    Extended Constant Expressions Proposal is not required). */
+    All four forms are valid in a constant expression (engine support for
+    the Extended Constant Expressions Proposal is not required). */
 
     parse() {
 
@@ -1655,9 +1673,9 @@ instructions.push = class PUSH extends Instruction {
 
 instructions.invoke = class INVOKE extends Instruction {
 
-    /* This class implements the `invoke` instruction (`call_indirect` in WAT).
-    The instruction takes a required type immediate, followed by an optional
-    table reference (which defaults to zero):
+    /* This class implements the `invoke` instruction (`call_indirect` in
+    WAT). The instruction takes a required type immediate, followed by an
+    optional table reference (which defaults to zero):
 
         invoke <type> [via <identity>]
 
@@ -1685,34 +1703,51 @@ instructions.is = class IS extends Instruction {
 
         this.test = require(Keyword);
 
-        if (evaluate(this.test, "null")) this.type = undefined;
-        else if (evaluate(this.test, "equal")) this.type = requireNumtype();
-        else if (evaluate(this.test, "zero")) this.type = requireIntegerNumtype();
-        else if (evaluate(this.test, "more", "less")) this.type = requireGnosticNumtype();
-        else throw new InvalidTestError(this);
+        if (evaluate(this.test, "null")) {
+
+            this.type = undefined;
+
+        } else if (evaluate(this.test, "equal")) {
+
+            this.type = requireNumtype();
+
+        } else if (evaluate(this.test, "zero")) {
+
+            this.type = requireIntegerNumtype();
+
+        } else if (evaluate(this.test, "more", "less")) {
+
+            this.type = requireGnosticNumtype();
+
+        } else throw new InvalidTestError(this);
     }
 }
 
 instructions.not = class NOT extends Instruction {
 
-    /* This class implements the `not` mnemonic, which is used for `not equal`,
-    `not more` and `not less` PHANTASM instructions. */
+    /* This class implements the `not` mnemonic, which is used for the
+    `not equal`, `not more` and `not less` PHANTASM instructions. */
 
     parse() {
 
         this.test = require(Keyword);
 
-        if (evaluate(this.test, "equal")) this.type = requireNumtype();
-        else if (evaluate(this.test, "more", "less")) this.type = requireGnosticNumtype();
-        else throw new InvalidTestError(this);
+        if (evaluate(this.test, "equal")) {
+
+            this.type = requireNumtype();
+
+        } else if (evaluate(this.test, "more", "less")) {
+
+            this.type = requireGnosticNumtype();
+
+        } else throw new InvalidTestError(this);
     }
 }
 
 instructions.drop = class DROP extends Instruction {
 
-    /* This class implements the `drop` mnemonic. Which is used for the Wasm `drop`,
-    `data.drop` and `elem.drop` instructions, written as `drop`, `drop memory bank`
-    and `drop table bank`, respectively, in PHANTASM. */
+    /* This class implements the `drop` mnemonic, which is used for the WAT
+    `drop`, `data.drop` and `elem.drop` instructions. */
 
     parse() {
 
@@ -1804,9 +1839,9 @@ instructions.cast = class CAST extends Instruction {
 
 instructions.expand = class EXPAND extends Instruction {
 
-    /* This class implements the `expand` mnemonic (those `extend` instructions
-    in WAT that have the same param type as their result type, expanding some
-    subset of the least significant bytes to populate the most significant). */
+    /* This class implements the `expand` mnemonic, which covers those WAT
+    `extend` instructions that have the same param and result type, expanding
+    some number of the LSBs by populating the MSBs with ones or zeros. */
 
     parse() {
 
@@ -1820,8 +1855,8 @@ instructions.expand = class EXPAND extends Instruction {
 
 instructions.extend = class EXTEND extends Instruction {
 
-    /* This class implements the `extend` mnemonic (those`extend` instructions
-    in WAT with the type `i32 -> i64`). */
+    /* This class implements the `extend` mnemonic, which covers those WAT
+    `extend` instructions that convert an `i32` to an `i64`. */
 
     parse() {
 
@@ -1888,27 +1923,26 @@ instructions.atomic.notify = class ATOMIC_NOTIFY extends MemoryInstruction {
     }
 }
 
-/* --{ HELPER FUNCTIONS }----------------------------------------------------------------------- */
+/* --{ HELPER FUNCTIONS }--------------------------------------------------- */
 
 export const evaluateLiteral = function(token, integerMode=false) {
 
-    /* This helper takes a number literal token instance and a bool (that defaults
-    to false). It returns the value of the number literal as a BigInt if the bool
-    is truthy, and as a regular Number otherwise.
-
-    Internally, the function uses integer arithmetic when `integerMode` is truthy,
-    and floating point arithmetic otherwise (with the usual implications for ranges
-    and rounding the results of exponentiation). There is an exception to this rule,
-    when a literal uses floating point notation to define an integer. In that case,
-    the floating point logic is employed, and the result is converted to a BigInt
-    (using `Math.round`), just before it is returned (see the language docs for
-    more information). */
+    /* This helper takes a number literal `token` instance and a bool named
+    `integerMode` that defaults to `false`. It returns the value of the given
+    literal, as a `BigInt` when the bool is truthy, and a `Number` otherwise.
+    The helper uses integer arithmetic when `integerMode` is `true`, and uses
+    floating point arithmetic otherwise (with the usual implications for the
+    permitted ranges, and for rounding the results of exponentiation). There
+    is an exception to this rule, when a literal uses floating point notation
+    while `IntegerMode` is `true`. In that case, the floating point logic is
+    employed, and the result is converted to a BigInt (using `Math.round`),
+    just before it is returned (see the docs for more information). */
 
     const float = function(string) {
 
-        /* Take a mantissa or an exponent, which can be a float or an integer, in
-        decimal or hexadecimal notation, as a string, and return its value as an
-        instance of `Number`. */
+        /* Take a mantissa or an exponent, which can be a float or an integer,
+        in decimal or hexadecimal notation, as a string, and return its value
+        as an instance of `Number`. */
 
         const [beforeDot, afterDot] = string.replace("#", "0x").split(".");
         const integer = parseInt(beforeDot, radix);
@@ -1922,35 +1956,59 @@ export const evaluateLiteral = function(token, integerMode=false) {
 
     const integer = function(string) {
 
-        /* Take a mantissa or exponent, which must be an integer, in decimal or
-        hexadecimal notation, as a string, and return its value as an instance
-        of `BigInt`. */
+        /* Take a mantissa or exponent, which must be an integer, in decimal
+        or hexadecimal notation, as a string, and return its value as an
+        instance of `BigInt`. */
 
         return BigInt(string.replace("#", "0x"));
     };
 
     const typecheck = function(number) {
 
-        /* This helper takes and returns its only argument when the outer function
-        is in Float Mode, and always raises an error in Integer Mode. It is used on
-        constants to prevent an integer from evaluating to `Infinite`, `NaN` etc. */
+        /* This helper takes and returns its only argument when the outer
+        function is in Float Mode, and always raises an error in Integer
+        Mode. It is used on constants to prevent an integer from evaluating
+        to `Infinite`, `NaN` etc. */
 
-        if (integerMode) { throw new ConstantIntegerError(token) } else return number;
+        if (integerMode) throw new ConstantIntegerError(token);
+        else return number;
     };
 
-    // first, return typechecked arg, if it is constant (`Infinity`, `NaN` etc)...
+    const base = function(hexadecimal, integer) {
 
-    if (["Infinity", "+Infinity"].includes(token.value)) return typecheck(Infinity);
-    else if (token.value === "-Infinity") return typecheck(-Infinity);
-    else if (token.value === "NaN") return typecheck(NaN);
+        /* This helper takes two bools. The first is `true` for hexadecimals,
+        and `false` for decimals, and the second is `true` for integers, and
+        `false` for floats. The helper returns the radix as a `BigInt` when
+        `integer` is `true`, and a `Number` otherwise. */
+
+        if (integer) return hexadecimal ? 16n : 10n;
+        else return hexadecimal ? 16 : 10;
+    };
+
+    // return typechecked arg,if it is constant (`Infinity`, `NaN` etc)...
+
+    if (["Infinity", "+Infinity"].includes(token.value)) {
+
+        return typecheck(Infinity);
+
+    } else if (token.value === "-Infinity") {
+
+        return typecheck(-Infinity);
+
+    } else if (token.value === "NaN") return typecheck(NaN);
 
     // otherwise, handle a regular literal (expressed using digits)...
 
     let result;
 
-    const modes = {float: token.value.includes("."), hex: token.value.includes("#")};
+    const modes = {
+        float: token.value.includes("."),
+        hex: token.value.includes("#")
+    };
+
     const parse = modes.float ? float : (integerMode ? integer : float);
-    const radix = parse === float ? (modes.hex ? 16 : 10) : (modes.hex ? 16n : 10n);
+
+    const radix = base(modes.hex, parse === integer);
     const value = normalizeNumberLiteral(token.value);
 
     if (value.includes("/")) {                  // lower magnitude
@@ -1967,7 +2025,8 @@ export const evaluateLiteral = function(token, integerMode=false) {
 
     } else result = parse(value);               // direct mantissa
 
-    return integerMode && parse === float ? BigInt(Math.round(result)) : result;
+    if (integerMode && parse === float) return BigInt(Math.round(result));
+    else return result;
 }
 
 const advance = function() {
@@ -2157,47 +2216,48 @@ const acceptQualifier = function(...qualifiers) {
     /* Advance and return the next token (truthy) if it is a qualifier
     with a given spelling, else just return `undefined` (falsey). */
 
-    if (at(Qualifier) && evaluate(NEXT_TOKEN, ...qualifiers)) return advance();
+    if (at(Qualifier) && evaluate(NEXT_TOKEN, ...qualifiers)) {
+
+        return advance();
+    }
 };
 
-const acceptPrefix = function(keyword, valtype, fallback=undefined) {
+const acceptPrefix = function(keyword, type) {
 
-    /* This helper accepts a prefix construct. If the given keyword is the next
-    token, and the following token is of the correct type, this helper advances
-    to the latter token, then returns it. If no prefix is found, the given fall-
-    back argument is returned. If the keyword is present, then the valtype or
-    literal is required. */
+    /* This helper accepts a prefix construct (for example, `as i32`). If
+    the given keyword is the next token, and the following token is of the
+    correct type, this helper advances to the latter token, and returns it.
+    The prefix being present makes the latter token required. If no prefix
+    is found, `undefined` is returned. */
 
-    if (acceptKeyword(keyword)) return require(valtype);
-    else return fallback;
+    if (acceptKeyword(keyword)) return require(type);
 };
 
-const requirePrefix = function(keyword, valtype, fallback=undefined) {
+const requirePrefix = function(keyword, type) {
 
-    /* This helper requires a prefix construct (a keyword followed by either a
-    valtype or a number or string literal - for example, `as i32` or `with 10`).
-    If the given keyword is the next token, and the following token is of the
-    correct type, this helper advances to the latter token, then returns it.
+    /* This helper requires a prefix construct (for example, `as i32`). If
+    the given keyword is the next token, and the following token is of the
+    correct type, this helper advances to the latter token, and returns it.
     If no prefix is found, a complaint is raised. */
 
-    if (requireKeyword(keyword)) return require(valtype);
+    if (requireKeyword(keyword)) return require(type);
 };
 
 const acceptMaxQualifier = function() {
 
-    /* This helper returns the next token if it is the Operation token named `max`.
-    This is used by the limits-parsing functions below, that overload `max` as a
-    qualifier. */
+    /* This helper returns the next token if it is the Operation token named
+    `max`. This is used by the limits-parsing functions below, that overload
+    `max` as a qualifier. */
 
     if (atToken(Operation, "max")) return advance();
 };
 
 const acceptLimits = function() {
 
-    /* This helper accepts a limits definition for a memory or table. If a maximum
-    is defined without an initial length, the helper complains, else it returns an
-    array with the two number literal tokens (which may both be `undefined`), with
-    the initial length followed by the maximum length. */
+    /* This helper accepts a limits definition for a memory or table. If a
+    maximum is defined without an initial length, the helper complains, else
+    it returns an array with the two number literal tokens (which may both be
+    `undefined`), with the initial length followed by the maximum length. */
 
     let min = acceptPrefix("with", NumberLiteral);
     let max = acceptPrefix("to", NumberLiteral);
@@ -2209,9 +2269,10 @@ const acceptLimits = function() {
 
 const requireLimits = function() {
 
-    /* This helper requires a limits definition for a memory or table, which must
-    be present, but may not include a maximum length. It returns the two values
-    as an array of number literal tokens, with the initial length first. */
+    /* This helper requires a limits definition for a memory or table, which
+    must be present, but may or may not include a maximum length. It returns
+    the two values as an array of number literal tokens, with the initial
+    length followed by the maximum length or `undefined`. */
 
     const min = requirePrefix("with", NumberLiteral);
 
@@ -2221,9 +2282,10 @@ const requireLimits = function() {
 
 const requireFullLimits = function() {
 
-    /* This helper requires a limits definition for a shared memory, which must be
-    present, and must include a maximum length. It returns the two values as an
-    array of number literal tokens, with the initial length first. */
+    /* This helper requires a limits definition for a shared memory, which
+    must be present, and must include a maximum length. It returns the two
+    values as an array of number literal tokens, with the initial length
+    followed by the maximum length. */
 
     const min = requirePrefix("with", NumberLiteral);
 
@@ -2248,18 +2310,21 @@ const requireValtype = function() {
 
 const acceptReftype = function() {
 
-    /* Accept a reftype for a table element (one of `pointer` or `proxy`), else
-    return `undefined`. */
+    /* Accept a reftype for a table element (one of `pointer` or `proxy`),
+    else return `undefined`. */
 
     const qualifier = accept(Qualifier);
 
-    if (qualifier && [pointer, proxy].includes(qualifier.value)) return qualifier;
+    if (qualifier && [pointer, proxy].includes(qualifier.value)) {
+
+        return qualifier;
+    }
 };
 
 const requireReftype = function() {
 
-    /* Accept a reftype for a table element (one of `pointer` or `proxy`), else
-    return `undefined`. */
+    /* Accept a reftype for a table element (one of `pointer` or `proxy`),
+    else return `undefined`. */
 
     if (acceptReftype()) return CURRENT_TOKEN;
     else throw new UnexpectedTokenError("reftype", advance());
@@ -2267,18 +2332,21 @@ const requireReftype = function() {
 
 const acceptEncoding = function() {
 
-    /* Accept any primitive type token that is a valid encoding for memory primers,
-    then return it, else return `undefined`. */
+    /* Accept any primitive type token that is a valid encoding for memory
+    primers, then return it, else return `undefined`. */
 
-    if (evaluate(NEXT_TOKEN, u8, u16, u32, u64, f32, f64, utf8)) return advance();
+    if (evaluate(NEXT_TOKEN, u8, u16, u32, u64, f32, f64, utf8)) {
+
+        return advance();
+    }
 };
 
 const requireGivenType = function(description, ...names) {
 
-    /* This function takes a `description` string and zero or more primitive type
-    names, also as strings. It returns a function that returns the next token,
-    if it is of a given type, else complaining (passing the `description` to
-    the error constructor. */
+    /* This function takes a `description` string and zero or more primitive
+    type names, also as strings. It returns a function that returns the next
+    token, if it is of a given type, else complaining (passing `description`
+    to the error constructor. */
 
     return function() {
 
@@ -2374,16 +2442,16 @@ const requireIdentities = stack(function(push) {
 
 const requireOptionalIdentity = function(location) {
 
-    /* This helper accepts an identity and returns it, else returning an implicit
-    zero, with the given `location`, if no identity is found. */
+    /* This helper accepts an identity and returns it, else returning an
+    implicit zero, with the given `location`, if no identity is found. */
 
     return accept(Identity) || new ImplicitNumber(0, location);
 };
 
 const requireTableQualifier = function() {
 
-    /* Require a table qualifier (one of `pointer`, `proxy` or `mixed`), and return
-    it, complaining otherwise. */
+    /* Require a table qualifier (one of `pointer`, `proxy` or `mixed`), and
+    return it, complaining otherwise. */
 
     const qualifier = require(Qualifier);
 
@@ -2393,7 +2461,7 @@ const requireTableQualifier = function() {
 
 const acceptComponent = function(...names) {
 
-    /* Acccept the next token, if it has a given name, else return
+    /* Acccept the next token, if it has a given name, otherwise return
     `undefined`. */
 
     if (at(Component) && names.includes(NEXT_TOKEN.value)) return advance();
@@ -2418,7 +2486,8 @@ const requireType = function(expression) {
 
 const acceptTypeReference = function() {
 
-    /* Accept a type reference, and return its identifier, else `undefined`. */
+    /* Accept a type reference, and return its identifier, or `undefined`,
+    of no type reference is found. */
 
     if (not(atKeyword("type"))) return undefined;
 
@@ -2429,9 +2498,9 @@ const acceptTypeReference = function() {
 
 const requireTypeExpression = function(signature) {
 
-    /* This helper is used to gather a type expression (or signature, when the
-    `expression` argument is falsey), then return it, complaining if neither
-    is present. */
+    /* This helper is used to gather a type expression (or signature, when
+    the `expression` argument is falsey), then return it, complaining if
+    neither is present. */
 
     const gatherTypes = stack(function(push) {
 
@@ -2441,15 +2510,17 @@ const requireTypeExpression = function(signature) {
 
         const done = function() {
 
-            /* This helper is used to determine whether to gather another type
-            (or return). It ensures that `gatherTypes` will not be confused by
-            a comma used to group instructions after an instruction that ends
-            with a type expression (that does not have void results):
+            /* This helper is used to determine whether to gather another
+            type (or return). It ensures that `gatherTypes` will not be
+            confused by a comma used to group instructions after an in-
+            struction that ends with a type expression (that does not
+            have void results):
 
                 invoke i32 -> i32, i32, add i32
 
-            This is required to avoid an edgecase, where `invoke` can only have
-            instructions nested after it in some situations and not others. */
+            This is required to avoid an edgecase, where `invoke` can only
+            have instructions nested after it in some situations and not
+            others. */
 
             return not(at(Comma)) || typecheck(FUTURE_TOKEN, Operation);
         };
@@ -2507,7 +2578,9 @@ const requireLocals = function(parent) {
         const location = typed ? typed.location : identifier.location;
 
         if (not(type)) throw new UntypedLocalError();
-        else parent.locals.push(new LocalDefinition(type, identifier, location));
+        else parent.locals.push(
+            new LocalDefinition(type, identifier, location)
+        );
 
         if (at(Comma)) advance();
         else return require(Terminator);
@@ -2516,9 +2589,9 @@ const requireLocals = function(parent) {
 
 const requireBlock = function(...args) {
 
-    /* This helper just decides whether to parse the require block as inline or
-    indented, based on whether the next token is the `thus` keyword, passing any
-    arguments along, and returning the result. */
+    /* This helper just decides whether to parse the require block as inline
+    or indented, based on whether the next token is the `thus` keyword, and
+    passing any arguments along, before returning the result. */
 
     if (acceptKeyword("thus")) return requireInlineBlock(...args);
     else return requireIndentedBlock(...args);
@@ -2570,12 +2643,10 @@ const requireInlineBlock = function(parent, expression=false) {
 const requireIndentedBlock = function(parent, expression=false) {
 
     /* This helper takes a `parent` node (which will be a `FunctionDefinition`
-    or a `BlockInstruction`). It gathers an indented block of instructions,
-    pushing each to `parent.block`.
-
-    The helper is called on the last token of the parent (of the block header).
-    If the optional `expression` argument is truthy, only instructions permitted
-    in constant expressions are allowed.
+    or `BlockInstruction`). It gathers an indented block, pushing each to the
+    `parent.block`. The helper is called on the last token of the parent (of
+    the block header). If the optional `expression` argument is truthy, only
+    instructions permitted in constant expressions are allowed.
 
     Note: This function is always initially called by `definitions.function`,
     and then any recursive call will be made by `BlockInstruction.parse`. */
@@ -2636,8 +2707,8 @@ const requireFunctionSpecifier = function() {
 
 const requireMemoryElement = function(push, context, newline) {
 
-    /* This helper gathers a memory element (from a memory primer). These ele-
-    ments must always specify its encoding (explicitly or inherited). */
+    /* This helper gathers a memory element (from a memory primer). These
+    elements must always specify its encoding (explicitly or inherited). */
 
     const type = acceptEncoding();
 
@@ -2658,29 +2729,35 @@ const requireMemoryElement = function(push, context, newline) {
 
 const requireTableElement = function(push, context, newline) {
 
-    /* This helper gathers a table element (from a primer for a pointer table or
-    pointer bank), which must always specify the element type (explicitly or in-
-    herited), currently always `pointer`, but this will be expanded in future. */
+    /* This helper gathers a table element (from a primer for a pointer table
+    or pointer bank), which must always specify the element type (explicitly
+    or inherited), currently always `pointer`, but this will be expanded in
+    future. */
 
     const type = atToken(Qualifier, "pointer") ? advance() : undefined;
 
     if (newline && not(type)) throw new BrokenDirectiveError(advance());
 
-    if (not(context = type || context)) throw new UnspecifiedElementError("table");
+    if (not(context = type || context)) {
 
-    push(new TableElement(context, type, acceptKeyword("null") || require(Identity)));
+        throw new UnspecifiedElementError("table");
+    }
+
+    const token = acceptKeyword("null") || require(Identity);
+
+    push(new TableElement(context, type, token));
 
     return context;
 };
 
 const requirePrimer = function(name, bank) {
 
-    /* This helper gathers and returns a primer for a memory or table. It ensures
-    that each element specifies its type (directly or inherited from some previous
-    element). The first argument (`name`) is a string that will be one of "memory"
-    or "pointer" ("mixed" and "proxy" may be supported later, if the specification
-    ever supports primers for those table types). The argument `bank` is a boolean
-    that indicates whether the primer belongs to a bank or not. */
+    /* This helper gathers and returns a primer for a memory or table. It will
+    ensure that each element specifies its type (directly or inherited from a
+    previous element). The first argument (`name`) is a string that is one of
+    "memory" or "pointer" ("mixed" and "proxy" may be supported later, if the
+    specification supports primers for those table types). The argument `bank`
+    is a bool that indicates whether the primer belongs to a bank or not. */
 
     const push = item => segment.push(item);
 
@@ -2739,34 +2816,44 @@ const requirePrimerStarter = function(inline, context) {
     } else require(Indent);
 };
 
-const nameNextComponent = function(description) {
+const nameNextComponent = function(description) { // 156
 
-    /* The parser functions that are invoked to handle import, define and declare
-    statements all defer to `specifiers.main` and `definitions.main`, which both,
-    in turn, defer to handlers from within the same namespace (either `specifiers`
-    or `definitions`), based on the type of component that is being parsed. While
-    the next token will always provide enough information to infer which handler
-    to defer to (and when to throw an error), it is not a simple predicate.
-
-    This helper peeks at the next token, and returns the name of the appropriate
-    handler as a string ("function", "variable", "constant", "memory", "table" or
-    "type"). The argument is a string (one of either "specifier" or "definition"),
-    and is used to ensure the helper refuses to return "type" to `specifiers.main`
-    (as types can be defined, but not imported), and to create error messages. */
+    /* The parser methods that handle specifiers and definitions all defer to
+    helpers, based on the type of component that is being parsed. While valid
+    code ensures that the next token will always provide enough information to
+    infer which helper to defer to (and when to throw an error), it is quite a
+    complex predicate. This helper peeks at the next token, and if it is valid,
+    returns the component name ("function", "variable", "constant", "memory",
+    "table" or "type"). The argument is a string ("specifier" or "definition")
+    used for ensuring "type" is only returned for definitions, and to create
+    error messages when required. */
 
     const value = NEXT_TOKEN.value;
 
-    if (at(Identifier)) return "function"; // matches `$identifier of ...`
+    if (at(Identifier)) {
 
-    if (atToken(Keyword, "start") || atToken(Component, "function")) return "function";
+        return "function";
 
-    if (at(Component) && ["variable", "constant"].includes(value)) return value;
+    } else if (atToken(Keyword, "start") || atToken(Component, "function")) {
 
-    if (atToken(Component, "memory") || atToken(Qualifier, shared)) return "memory";
+        return "function";
 
-    if (at(Qualifier) && [mixed, pointer, proxy].includes(value)) return "table";
+    } else if (at(Component) && ["variable", "constant"].includes(value)) {
 
-    if (description === "definition" && atToken(Keyword, "type")) return "type";
+        return value;
+
+    } else if (atToken(Component, "memory") || atToken(Qualifier, shared)) {
+
+        return "memory";
+
+    } else if (at(Qualifier) && [mixed, pointer, proxy].includes(value)) {
+
+        return "table";
+
+    } else if (description === "definition" && atToken(Keyword, "type")) {
+
+        return "type";
+    }
 
     if (value === "table") throw new UnqualifiedTableError();
     else throw new ExpectedComponentError(description, NEXT_TOKEN);
@@ -2774,10 +2861,13 @@ const nameNextComponent = function(description) {
 
 const nameInstruction = function(instruction, full=false) {
 
-    /* This helper takes an instruction node, and returns its name as a string.
-    The name will be written in full (`foo-instruction`) if `full` is truthy. */
+    /* This helper takes an instruction node, and returns its name as a
+    string. The name will be written in full (`foo-instruction`) if `full`
+    is truthy, and without the suffix otherwise. */
 
-    return instruction.constructor.name.toLowerCase() + (full ? "-instruction" : "");
+    const suffix = full ? "-instruction" : "";
+
+    return instruction.constructor.name.toLowerCase() + suffix;
 };
 
 const reset = function(configuration) {
