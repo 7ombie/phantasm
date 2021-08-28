@@ -1,11 +1,11 @@
-/* --{ THE PHANTASM LEXER }--{ /static/lexer.js }---------------------------------------------- /*
+/* --{ THE PHANTASM LEXER }--{ /static/lexer.js }--------------------------- /*
 
 This module implements the PHANTASM lexer, exporting a function named
 `lex` as an entrypoint. */
 
 import { not, iife, stack } from "/static/helpers.js";
 
-/* --{ THE GLOBAL LEXER STATE }---------------------------------------------------------------- */
+/* --{ THE GLOBAL LEXER STATE }--------------------------------------------- */
 
 let URL;            // used to store the url for the source file
 let SOURCE;         // used to store the source string
@@ -19,13 +19,13 @@ let LINE_HEAD;      // the index of the first character in the current line
 let INDENT_LEVEL;   // the current level of indentation
 let LAST_TOKEN;     // tracks which type of token was last to be yielded
 
-/* --{ A BUNCH OF USEFUL STRINGS }-------------------------------------------------------------- */
+/* --{ A BUNCH OF USEFUL CONSTANTS }---------------------------------------- */
 
 const [openBrace, closeBrace] = ["{", "}"];
-const [comma, semicolon, hash, atSign] = [",", ";", "#", "@"];
 const [plus, minus, dollar, circumflex] = ["+", "-", "$", "^"];
 const [slash, backslash, underscore, dot] = ["/", "\\", "_", "."];
-const [empty, space, newline, tab, quote, zero] = ["", " ", "\n", "\t", "\"", "\0"];
+const [empty, space, newline, tab, quote] = ["", " ", "\n", "\t", "\""];
+const [comma, semicolon, hash, atSign, zero] = [",", ";", "#", "@", "\0"];
 const [backspace, formfeed, carriage, verticalTab] = ["\b", "\f", "\r", "\v"];
 
 const arrow = "->";
@@ -33,7 +33,6 @@ const ellipsis = "...";
 const decimals = "0123456789";
 const specials = "[]{}(),;" + space + newline;
 const numerics = plus + minus + hash + decimals;
-const terminatorIcon = "\u{23CE}";
 
 const constants = [
     "Infinity", "+Infinity", "-Infinity", "NaN"
@@ -49,66 +48,69 @@ const components = [
 ];
 
 const qualifiers = [
-    "pointer", "proxy", "mixed", "global", "local", "left", "right", "shared", "atomic"
+    "pointer", "proxy", "mixed", "global", "local", "left", "right",
+    "shared", "atomic"
 ];
 
 const keywords = [
-    "define", "import", "export", "type", "prime", "from", "max", "null", "start", "sop",
-    "of", "with", "to", "zero", "equal", "less", "more", "thus", "bank", "segment", "at",
-    "sop", "via", "in", "as"
+    "define", "import", "export", "type", "prime", "from", "max", "null",
+    "start", "sop", "of", "with", "to", "zero", "equal", "less", "more",
+    "thus", "bank", "segment", "at", "sop", "via", "in", "as"
 ];
 
 const operations = [
-    "get", "set", "put", "nop", "unreachable", "drop", "return", "add", "sub", "expand",
-    "fork", "exit", "shift", "rotate", "sign", "grow", "fill", "size", "copy", "extend",
-    "select", "wrap", "promote", "demote", "lop", "convert", "cast", "notify", "broker",
-    "ctz", "clz", "nsa", "call", "abs", "nearest", "ceiling", "floor", "root", "invoke",
-    "mul", "div", "rem", "block", "loop", "branch", "else", "is", "not", "push", "jump",
-    "fence", "min", "max", "load", "store", "and", "or", "xor", "swap", "neg", "wait",
+    "get", "set", "put", "nop", "unreachable", "drop", "return", "add",
+    "sub", "expand", "fork", "exit", "shift", "rotate", "sign", "grow",
+    "fence", "min", "max", "load", "store", "and", "or", "xor", "swap",
+    "abs", "nearest", "ceiling", "floor", "root", "invoke", "mul", "div",
+    "rem", "block", "loop", "branch", "else", "is", "not", "push", "jump",
+    "fill", "size", "copy", "extend", "select", "wrap", "promote", "demote",
+    "lop", "convert", "cast", "notify", "broker", "ctz", "clz", "nsa", "call",
+    "neg", "wait"
 ];
 
 const escapees = {
 
     // the names and aliases for the ASCII characters...
 
-    t: tab, tab,                                            // t | tab
-    q: quote, quote,                                        // q | quote
-    n: newline, newline,                                    // n | newline
-    b: backspace, backspace,                                // b | backspace
-    z: zero, null: zero, zero,                              // z | null | zero
-    f: formfeed, ff: formfeed, formfeed,                    // f | ff | formfeed
-    r: carriage, cr: carriage, return: carriage,            // r | cr | return
-    v: verticalTab, vt: verticalTab, vtab: verticalTab,     // v | vt | vtab
-    s: space, space,                                        // s | space
+    t: tab, tab,                                         // t | tab
+    q: quote, quote,                                     // q | quote
+    n: newline, newline,                                 // n | newline
+    b: backspace, backspace,                             // b | backspace
+    z: zero, null: zero, zero,                           // z | null | zero
+    f: formfeed, ff: formfeed, formfeed,                 // f | ff | formfeed
+    r: carriage, cr: carriage, return: carriage,         // r | cr | return
+    v: verticalTab, vt: verticalTab, vtab: verticalTab,  // v | vt | vtab
+    s: space, space,                                     // s | space
 
     // the names and aliases for the Unicode (specific) characters...
 
-    divide: "\u{F7}",                                       // division sign
-    times: "\u{D7}", multiply: "\u{D7}",                    // multiplication sign
-    en: "\u{2013}", endash : "\u{2013}",                    // en dash
-    em: "\u{2014}", emdash : "\u{2014}",                    // em dash
-    paragraph: "\u{B6}",                                    // paragraph marker
-    section: "\u{A7}",                                      // section marker
-    check: "\u{2713}",                                      // check mark
-    cross: "\u{2717}",                                      // cross mark
-    left: "\u{2190}",                                       // left arrow
-    up: "\u{2191}",                                         // up arrow
-    right: "\u{2192}",                                      // right arrow
-    down: "\u{2193}",                                       // down arrow
-    ellipsis: "\u{2026}",                                   // ellipsis character
-    star: "\u{2606}",                                       // five-pointed white star
+    divide: "\u{F7}",                       // division sign
+    times: "\u{D7}", multiply: "\u{D7}",    // multiplication sign
+    en: "\u{2013}", endash : "\u{2013}",    // en dash
+    em: "\u{2014}", emdash : "\u{2014}",    // em dash
+    paragraph: "\u{B6}",                    // paragraph marker
+    section: "\u{A7}",                      // section marker
+    check: "\u{2713}",                      // check mark
+    cross: "\u{2717}",                      // cross mark
+    left: "\u{2190}",                       // left arrow
+    up: "\u{2191}",                         // up arrow
+    right: "\u{2192}",                      // right arrow
+    down: "\u{2193}",                       // down arrow
+    ellipsis: "\u{2026}",                   // ellipsis character
+    star: "\u{2606}",                       // five-pointed white star
 
-    // note: see `en.wikibooks.org/wiki/Unicode/List_of_useful_symbols` as a list
-    // of suggestions for names to provide as a starting point
+    // note: see `en.wikibooks.org/wiki/Unicode/List_of_useful_symbols` as a
+    // list of suggestions for names to provide as a starting point
 };
 
-/* --{ THE LEXER ERROR CLASSES }---------------------------------------------------------------- */
+/* --{ THE LEXER ERROR CLASSES }-------------------------------------------- */
 
 export class PhantasmError extends SyntaxError {
 
     /* This is an abstract base class for PHANTASM compiler errors. Each stage
-    of the compiler (`lex`, `parse` etc) defines its own error class that simply
-    extends the name, replacing `Phantasm` with the stage name (like `LexerError`
+    of the compiler (`lex`, `parse` and `compile`) defines its own error class
+    that replaces `Phantasm` with the stage name (`LexerError`, `ParserError`
     or `CompilerError`). The names are used to identify the stage in the error
     message. The classes are used to log an error, before completely aborting
     the current compilation process. */
@@ -126,6 +128,8 @@ export class PhantasmError extends SyntaxError {
 
 export class LexerError extends PhantasmError {
 
+    /* This is the abstract class for all lexer errors. */
+
     constructor(text, nudge) {
 
         if (nudge) advanceToken();
@@ -140,9 +144,9 @@ class IllegalCharacterError extends LexerError {
 
     constructor(character, nudge) {
 
-        /* The `character` argument is the illegal character. The `next` argument
-        is a bool, which determines if the function should advance the token before
-        throwing an exception (which affects `TOKEN_LINE` and `TOKEN_COLUMN`). */
+        /* The `character` argument is the illegal character, and `next` is a
+        bool that determines if the function should advance the token before
+        throwing an exception (affecting `TOKEN_LINE` and `TOKEN_COLUMN`). */
 
         const template = "Illegal character (`{0.s}`) found.";
 
@@ -156,11 +160,12 @@ class UnexpectedCharacterError extends LexerError {
 
     constructor(character, context, nudge) {
 
-        /* The `character` argument is the illegal character. The `next` argument
-        is a bool, which determines if the function should advance the token before
-        throwing an exception (which affects `TOKEN_LINE` and `TOKEN_COLUMN`). */
+        /* The `character` argument is the illegal character, and `next` is a
+        bool that determines if the function should advance the token before
+        throwing an exception (affecting `TOKEN_LINE` and `TOKEN_COLUMN`). */
 
-        const text = format("Unexpected {0.s} in {1.s}.", serialize(character), context);
+        const template = "Unexpected {0.s} in {1.s}.";
+        const text = format(template, serialize(character), context);
 
         super(text, nudge);
     }
@@ -174,17 +179,21 @@ class TrailingCommaError extends LexerError {
 
     constructor() {
 
+        /* This constructor requires no arguments, as the message is
+        the same for all trailing commas, whatever the context. */
+
         super("Unexpected newline (trailing commas are illegal).", false);
     }
 }
 
-class StringGrammarError extends LexerError {
+class StringError extends LexerError {
 
-    /* Thrown when a problem is found in a string literal. */
+    /* Thrown when a problem is found in a string literal. There are a few
+    possible problems, which are described by the caller. */
 
     constructor(description) {
 
-        /* The `description` argument describes the issue.  */
+        /* The `description` argument describes the problem.  */
 
         const text = format("Invalid {0.s} in string literal.", description);
 
@@ -200,16 +209,16 @@ class UnrecognizedTokenError extends LexerError {
 
         /* The `token` argument is the invalid token value.  */
 
-        const text = format("Invalid (unclassifiable) token (`{0.s}`).", token);
+        const template = "Invalid (unclassifiable) token (`{0.s}`).";
 
-        super(text, false);
+        super(format(template, token), false);
     }
 }
 
 class InvalidContinuationError extends LexerError {
 
     /* Thrown when a continuation marker is not the last (printable)
-    thing on the line, or is not properly indented in the next line. */
+    thing on the line, or the next line is improperly indented. */
 
     constructor(indentation) {
 
@@ -218,7 +227,7 @@ class InvalidContinuationError extends LexerError {
 
         let text;
 
-        if (indentation) text = "A continuation line must be properly indented.";
+        if (indentation) text = "A continuation must be properly indented.";
         else text = "A continuation marker must end its line.";
 
         super(text, false);
@@ -249,7 +258,7 @@ class UnevenIndentationError extends LexerError {
 
 class NeverendingCommentError extends LexerError {
 
-    /* Thrown when the indentation level is not a multiple of four. */
+    /* Thrown when the indentation is not a multiple of four spaces. */
 
     constructor() {
 
@@ -258,7 +267,7 @@ class NeverendingCommentError extends LexerError {
 }
 
 
-/* --{ ABSTRACT BASE CLASSES FOR THE LEXER TOKENS }--------------------------------------------- */
+/* --{ ABSTRACT BASE CLASSES FOR THE LEXER TOKENS }------------------------- */
 
 export class Node {
 
@@ -286,20 +295,19 @@ export class Token extends Node {
     }
 }
 
-export class Identity extends Token {}              // identifiers and indices
-export class Special extends Token {}               // special characters
-export class Delimiter extends Special {}           // newlines and commas
-export class Indentation extends Special {}         // newlines and commas
+export class Identity extends Token {}
+export class Special extends Token {}
+export class Delimiter extends Special {}
+export class Indentation extends Special {}
 
-/* --{ CONCRETE CLASSES FOR THE LEXER TOKENS }-------------------------------------------------- */
+/* --{ CONCRETE CLASSES FOR THE LEXER TOKENS }------------------------------ */
 
 export class Comma extends Delimiter {}
-export class Terminator extends Delimiter {}        // marks a newline without a level change
 
-export class Component extends Token {}             // component names
-export class Operation extends Token {}             // instruction names
-export class Primitive extends Token {}             // primtive types (`i32, `f64`, `i8` etc)
-export class SkinnyArrow extends Token {}           // used for the skinny arrow operator
+export class Component extends Token {}
+export class Operation extends Token {}
+export class Primitive extends Token {}
+export class SkinnyArrow extends Token {}
 export class Keyword extends Token {}
 export class Void extends Token {}
 export class EOF extends Token {}
@@ -309,7 +317,7 @@ export class Dedent extends Indentation {}
 
 export class Identifier extends Identity {}
 
-export class Qualifier extends Token {}             // component qualifiers
+export class Qualifier extends Token {}
 
 export class ImplicitQualifier extends Token {
 
@@ -329,7 +337,7 @@ export class ImplicitString extends StringLiteral {
     /* This class is used to represent an implicit string with a subclass
     of `StringLiteral`, permitting the parser stage to treat implicit and
     explicit strings as indistinct. It is used for implicit modulenames,
-    passing the bytes for the string "host" to `super`. */
+    passing the bytes for the string "host". */
 
     constructor(value, location) {
 
@@ -355,16 +363,27 @@ export class ImplicitNumber extends NumberLiteral {
     }
 }
 
-/* --{ THE GENERIC HELPER FUNCTIONS }----------------------------------------------------------- */
+export class Terminator extends Delimiter {
+
+    /* This class implements the terminator token, which always has the
+    same value. */
+
+    constructor() { super("\u{23CE}") }
+}
+
+/* --{ THE GENERIC HELPER FUNCTIONS }--------------------------------------- */
 
 export const format = function(string, ...args) {
 
-    /* This function takes a `string` and an array of `args`. It uses the `args`
-    to format the string, returning the result. Escape sequences are wrapped in
-    curly braces (and cannot be combined). Each sequence begins with an integer,
-    followed by a dot, then a lowercase letter, eg: "{0.t}", and is replaced by
-    a value taken from one of `args`. The integer is an index into `args`, and
-    the letter is what to take from the argument:
+    /* This function takes a `string` and an array of `args`. It uses `args`
+    to format the string, returning the result. The formatting is tailored
+    to the needs of the assembler.
+
+    Escape sequences are wrapped in curly braces (and cannot be combined).
+    Each sequence begins with an integer, followed by a dot, then a lower-
+    case letter, eg: "{0.t}", and is replaced by a value taken from `args`.
+    The integer is an index into `args`, and the letter indicates how to
+    render the argument:
 
         + `t`: The argument type.
         + `v`: The value of the argument.
@@ -372,12 +391,12 @@ export const format = function(string, ...args) {
         + `f`: The argument, expressed with the syntax: Type(value)
         + `s`: The argument, converted to a string.
 
-    The caller is responsible for ensuring each argument supports the operations
-    being performed on it (generally, args are `Token` instances (using `t`, `v`,
-    `V` and `f`) or strings (using `s`).
+    The caller is responsible for ensuring that each argument supports the
+    operations being performed on it (generally, args are `Token` instances
+    (using `t`, `v`, `V` and `f`) or strings (using `s`).
 
-    Note: The design of this function could be improved, but it works, and has
-    all the features it needs, for now. */
+    Note: The design of this function could be improved, but it works, and
+    has all the features it needs, for now. */
 
     const replace = function(match) {
 
@@ -386,7 +405,8 @@ export const format = function(string, ...args) {
         const [arg, name] = match.split(".");
         const node = args[parseInt(arg)];
         const type = node.constructor.name || "";
-        const value = node instanceof StringLiteral ? `"${node.value}"` : `\`${node.value}\``;
+        const literal = node instanceof StringLiteral;
+        const value = literal ? `"${node.value}"` : `\`${node.value}\``;
 
         if (name === "t") return type;
         if (name === "s") return node;
@@ -445,7 +465,7 @@ export const normalizeNumberLiteral = iife(function() {
     };
 });
 
-/* --{ THE LEXER SPECIFIC HELPER FUNCTIONS }---------------------------------------------------- */
+/* --{ THE LEXER SPECIFIC HELPER FUNCTIONS }-------------------------------- */
 
 const advance = function() {
 
@@ -454,9 +474,9 @@ const advance = function() {
     character is illegal (in an PHANTASM file), lexing is aborted. Otherwise,
     the character is returned.
 
-    Note: The character will become `undefined` once the source is exhausted,
-    though in practice, the lexer will use this to indicate when to stop the
-    loop and yield a final `EOF` token.
+    Note: The character will become `undefined` once the source is exhausted.
+    The lexer uses this to indicate when to stop the loop and yield a final
+    `EOF` token.
 
     The character is returned as a convenience, allowing the invocation to
     double as a predicate that can indicate when the source is exhausted. */
@@ -474,8 +494,8 @@ const advance = function() {
 
 const printable = function(character) {
 
-    /* This helper takes a character and returns a bool that indicates whether
-    the character is an ASCII printable or not. */
+    /* This helper takes a character and returns a bool that indicates
+    whether the character is an ASCII printable or not. */
 
     const code = character.charCodeAt(0);
 
@@ -484,21 +504,26 @@ const printable = function(character) {
 
 const serialize = function(character) {
 
+    /* This helper takes a character. If it is printable, the character is
+    returned, else it is converted to its charcode (as a string), which is
+    returned. This is used in error messages that interpolate characters. */
+
     if (printable(character)) return character;
     else return "0x" + character.charCodeAt(0).toString(16);
 };
 
 const note = function(token) {
 
-    /* This function takes and returns a (new) token, making a note of
-    it as the last token to be yielded by the lexer. */
+    /* This function takes and returns a (new) token, making a note of it as
+    the last token to be yielded by the lexer (permitting lookback). */
 
     return LAST_TOKEN = token;
 };
 
 const advanceLine = function() {
 
-    /* Update the lexer state so it is ready to begin a new line. */
+    /* This function updates the lexer state so it is ready to begin a
+    new line. */
 
     LINE_HEAD = INDEX;
     LINE_NUMBER++;
@@ -506,7 +531,8 @@ const advanceLine = function() {
 
 const advanceToken = function() {
 
-    /* Update the lexer state so it is ready to begin a new token. */
+    /* This function updates the lexer state so it is ready to begin a
+    new token. */
 
     TOKEN_LINE = LINE_NUMBER;
     TOKEN_COLUMN = INDEX - LINE_HEAD;
@@ -515,9 +541,9 @@ const advanceToken = function() {
 
 const peek = function() {
 
-    /* Peek at the next character in the source string, and return it. As the
-    character could be invalid or `undefined`, the caller must allow for that
-    (though this is normally unrequired or simple to do). */
+    /* Peek at the next character in the source string, and return it. As
+    the character could be invalid or `undefined`, the caller must allow
+    for that (though this is normally unrequired or simple to handle). */
 
     return SOURCE[INDEX + 1];
 };
@@ -569,25 +595,30 @@ const gatherRegular = function(start=TOKEN_STRING) {
 
 const gatherString = function() {
 
-    /* This helper gathers a string literal, handling any escape sequences and
-    validating everything in the process. It returns the expressed string. */
+    /* This helper gathers a string literal, handling any escape sequences
+    and validating everything in the process. It returns the string that is
+    expressed by the literal. */
 
     const gatherCharacters = stack(function(push) {
 
-        /* This internal helper gathers the literal being parsed into a list of
-        its characters, converting escape sequences as encountered, and ensuring
-        everything is valid in the process. */
+        /* This internal helper gathers the literal being parsed into a list
+        of its characters, converting escape sequences as encountered, and
+        ensuring everything is valid in the process. */
 
         let value;
 
         const unexpected = function(character, context) {
 
-            /* Take the name of an unexpected character (either "eof" or "newline"),
-            and the context it was found in (either "literal" or "sequence"), and
-            then complain, pointing to the specific character. */
+            /* Take the name of an unexpected character (in practice, either
+            "eof" or "newline"), and the context it was found in ("literal"
+            or "sequence"), and then complain, pointing to the specific
+            character. */
 
-            character = character === "eof" ? "end of file" : "newline";
-            context = context === "literal" ? "string literal" : "escape sequence";
+            if (character === "eof") character = "string literal";
+            else character = "newline";
+
+            if (context === "literal") context = "end of file";
+            else context = "escape sequence";
 
             throw new UnexpectedCharacterError(character, context, true);
         };
@@ -596,7 +627,7 @@ const gatherString = function() {
 
             /* Take an escape sequence expression and return `true` if it is a
             name (it contains at least one lowercase letter), else `false`. No
-            check is performed to ensure the name is actually defined. */
+            check is performed here to ensure the name is actually defined. */
 
             return expression.toUpperCase() !== expression;
         };
@@ -620,15 +651,15 @@ const gatherString = function() {
                 if (isName(TOKEN_STRING)) {
 
                     if (TOKEN_STRING in escapees) push(escapees[TOKEN_STRING]);
-                    else throw new StringGrammarError("named escape expression");
+                    else throw new StringError("named escape expression");
 
                 } else {
 
                     try { value = BigInt("0x" + TOKEN_STRING) }
-                    catch { throw new StringGrammarError("hexadecimal escape expression") }
+                    catch { throw new StringError("hex escape expression") }
 
                     try { push(String.fromCodePoint(Number(value))) }
-                    catch { throw new StringGrammarError("Unicode code point") }
+                    catch { throw new StringError("Unicode code point") }
                 }
 
             } else push(CHARACTER);
@@ -698,24 +729,26 @@ const numerical = iife(function() {
 
 const handleNewline = stack(function(push, pop) {
 
-    /* This helper is called on a Newline character, and implements significant
+    /* This helper is called on a Newline character. It implements significant
     whitespace. It uses `measureIndentation` to get (and validate) the absolute
     indent level, and will check the relative indent is not greater than one.
 
-    Assuming valid indentation, an array is returned that will contain an `Indent`
-    if the level went up, and a `Terminator` if the level remained constant. If
-    the level decreased, the returned array will contain one `Dedent` for each
-    level. The `lex` function will then yield each token in the array.
+    Assuming valid indentation, an array is returned that contains an `Indent`
+    if the level went up, and a `Terminator` if the level remained constant.
+    If the level decreased, the returned array will contain one `Dedent`
+    for each level (the `lex` function will then yield each token in
+    the array).
 
-    If the indentation has decreased (by any amount), and is now onside, an extra
-    instance of `Terminator` is appended to the `Dedent` tokens. This allows the
-    parser to validate that block-statements are terminated correctly using the
-    same logic as for regular statements (checking for a `Terminator`). */
+    If the indentation has decreased (by any amount), and is now onside, an
+    extra instance of `Terminator` is appended to the `Dedent` tokens. This
+    allows the parser to validate that block-statements are terminated corr-
+    ectly using the same logic as for regular statements (checking for a
+    `Terminator`). */
 
     if (LAST_TOKEN instanceof Comma) throw new TrailingCommaError();
 
     const oldIndent = INDENT_LEVEL;
-    const terminator = new Terminator(terminatorIcon);
+    const terminator = new Terminator();
 
     INDENT_LEVEL = measureIndentation();
 
@@ -729,16 +762,16 @@ const handleNewline = stack(function(push, pop) {
 
     for (let i = 0; i > delta; i--) push(new Dedent("-1"));
 
-    if (INDENT_LEVEL === 0) push(new Terminator(terminatorIcon));
+    if (INDENT_LEVEL === 0) push(new Terminator());
 });
 
 const handleContinuation = function() {
 
-    /* This helper is called on continuation markers. It validates that the next
-    line (of code) is indented by one level, and advances the lexer state appro-
-    priately. It allows for whitespace after the continuation marker, and uses
-    the `measureIndentation` helper to deal with any insignificant whitespace
-    below the marker and above the continuation line. */
+    /* This helper is called on continuation markers. It validates that the
+    next line (of code) is indented by one level, and advances the lexer state
+    appropriately. It allows for whitespace after the continuation marker, and
+    uses the `measureIndentation` helper to deal with any insignificant white-
+    space below the marker and above the continuation line. */
 
     while (peek() !== newline && advance() === space) continue;
 
@@ -750,12 +783,12 @@ const handleContinuation = function() {
 
 const handleCommentary = function() {
 
-    /* This helper is called on a semicolon character, and gathers up either a
-    multiline or an inline comment, depending on the next character. A complaint
-    is raised if a multiline comment is left unclosed. Any gathered comment is
-    discarded, and `undefined` is always returned. */
+    /* This helper is called on a semicolon character, and gathers up either
+    a multiline or an inline comment, depending on the next character. A com-
+    plaint is raised if a multiline comment is left unclosed. Any gathered
+    comment is discarded, and `undefined` is always returned. */
 
-    if (peek() === semicolon) {                                         // multiline
+    if (peek() === semicolon) {                             // multiline
 
         const error = new NeverendingCommentError();
 
@@ -767,20 +800,22 @@ const handleCommentary = function() {
             else if (on(undefined)) throw error;
         }
 
-    } else while (peek() && peek() !== newline) advance();              // inline
+    } else while (peek() && peek() !== newline) advance();  // inline
 };
 
 const measureIndentation = function() {
 
-    /* This helper is called when the current character is a newline. It figures
-    out how much indentation follows the newline, while ignoring empty lines and
-    indented comments etc. If the indentation is valid, the helper returns the
-    indentation level (in absolute terms) as an integer, else complaining.
+    /* This helper is called when the current character is a newline. It
+    figures out how much indentation follows the newline, while ignoring
+    empty lines and indented comments etc. If the indentation is valid,
+    the helper returns the indentation level (in absolute terms) as an
+    integer, else complaining.
 
-    The lexer is left pointing to the last whitespace character it found (which
-    may be the newline it began at). The helper also begins a new token before
-    returning, so that any complaint (that may be raised by the caller on
-    illegal indentation) will always point to the right place. */
+    The lexer is left pointing to the last whitespace character it found
+    (which may be the newline it began at). The helper also begins a new
+    token before returning, so that any complaint (that may be raised by
+    the caller on illegal indentation) will always point to the right
+    place. */
 
     let spaces = 0;
 
@@ -808,8 +843,8 @@ const measureIndentation = function() {
 
 const reset = function(configuration) {
 
-    /* This is the generic reset helper for this module. It resets
-    the lexer state, ready for a new source. */
+    /* This is the generic reset helper for this module. It resets the lexer
+    state, ready for a new source file. */
 
     INDENT_LEVEL = 0;
     URL = configuration.url;
@@ -820,11 +855,13 @@ const reset = function(configuration) {
     [LINE_NUMBER, LINE_HEAD] = [1, -1];
 };
 
-/* --{ THE FRONTEND LEX FUNCTION }-------------------------------------------------------------- */
+/* --{ THE FRONTEND LEX FUNCTION }------------------------------------------ */
 
 export const lex = function * (configuration) {
 
-    /* This generator is the entrypoint for the PHANTASM lexer. */
+    /* This generator is the entrypoint for the PHANTASM lexer. It takes a
+    configuration hash, and yields the tokens of the given source one by
+    one, assuming no error is raised in the process. */
 
     reset(configuration);
 
@@ -832,20 +869,20 @@ export const lex = function * (configuration) {
 
         advanceToken();
 
-        if (on(space)) continue;                                                    // spaces
+        if (on(space)) continue;
 
-        if (on(newline)) for (const token of handleNewline()) yield note(token);    // newlines
+        if (on(newline)) for (let token of handleNewline()) yield note(token);
 
-        else if (on(quote)) yield note(new StringLiteral(gatherString()));          // strings
+        else if (on(quote)) yield note(new StringLiteral(gatherString()));
 
-        else if (on(semicolon)) handleCommentary();                                 // comments
+        else if (on(semicolon)) handleCommentary();
 
-        else if (specials.includes(CHARACTER)) {                                    // specials
+        else if (specials.includes(CHARACTER)) {
 
-            if (on(comma)) yield note(new Comma());                                 // commas
+            if (on(comma)) yield note(new Comma());
             else throw new IllegalCharacterError(CHARACTER, false);
 
-        } else {                                                                    // regulars
+        } else {
 
             gatherRegular();
 
@@ -854,13 +891,11 @@ export const lex = function * (configuration) {
         }
     }
 
-    // make sure everything is explicitly terminated before yielding the EOF token...
-
     for (let i = 0; i < INDENT_LEVEL; i++) yield note(new Dedent("-1"));
 
-    if (not(LAST_TOKEN instanceof Terminator)) yield new Terminator(terminatorIcon);
+    if (not(LAST_TOKEN instanceof Terminator)) yield new Terminator();
 
-    yield new EOF("(EOF)");                                                         // EOF
+    yield new EOF("(EOF)");
 };
 
 export default lex;
