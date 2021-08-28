@@ -1,4 +1,4 @@
-/* --{ THE PHANTASM LEXER }--{ /static/lexer.js }--------------------------- /*
+/* --{ THE PHANTASM LEXER }--{ /static/lexer.js }---------------------------- *
 
 This module implements the PHANTASM lexer, exporting a function named
 `lex` as an entrypoint. */
