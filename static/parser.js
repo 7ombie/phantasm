@@ -3,12 +3,14 @@
 This module implements the PHANTASM parser, exporting a function named
 `parse` as an entrypoint. */
 
+import { not, iife, stack } from "/static/helpers.js";
+
 import {
-    lex, put, not, iife, format, stack, encodeUTF8, PhantasmError, Node,
-    Token, Component, Keyword, Primitive, Qualifier, ImplicitQualifier,
-    Void, SkinnyArrow, Operation, Indentation, Indent, StringLiteral,
-    ImplicitString, Identifier, Identity, normalizeNumberLiteral, EOF,
-    Dedent, Delimiter, Terminator, Comma, NumberLiteral, ImplicitNumber
+    lex, format, encodeUTF8, PhantasmError, Node, Token, Component,
+    Keyword, Primitive, Qualifier, ImplicitQualifier, Void, SkinnyArrow,
+    Identifier, Identity, normalizeNumberLiteral, EOF, Dedent, Delimiter,
+    Operation, Indentation, Indent, StringLiteral, ImplicitString,
+    Terminator, Comma, NumberLiteral, ImplicitNumber
 } from "/static/lexer.js";
 
 /* --{ THE GLOBAL PARSER STATE }---------------------------------------------------------------- */

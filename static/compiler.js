@@ -1,27 +1,31 @@
-/* --{ THE PHANTASM COMPILER  }--{ /static/compiler.js }--------------------------------------------- *
+/* --{ THE PHANTASM COMPILER  }--{ /static/compiler.js }--------------------- *
 
-This module implements the PHANTASM parser, exporting a function
-named `compile` as an entrypoint. */
+This module implements the PHANTASM compiler, exporting a function named
+`compile` as an entrypoint. */
+
+import { not, iife, stack } from "/static/helpers.js";
 
 import {
-    lex, put, not, iife, stack, format, encodeUTF8, Identifier, NumberLiteral, PhantasmError,
-    Node, Primitive, Void
+    format, encodeUTF8, Identifier, NumberLiteral, PhantasmError, Node,
+    Primitive, Void
 } from "./lexer.js";
 
 import {
-    parse, TypeReference, TypeExpression, ParamElement, evaluateLiteral, TypeDefinition,
-    Instruction, BlockInstruction, DefineStatement, ImportStatement, ExportStatement,
-    RegisterDefinition, FunctionDefinition, MemoryDefinition, TableDefinition,
-    RegisterSpecifier, FunctionSpecifier, MemorySpecifier, TableSpecifier,
+    parse, evaluateLiteral,
+    Instruction, BlockInstruction,
+    TypeReference, TypeExpression, TypeDefinition,
+    DefineStatement, ImportStatement, ExportStatement,
+    ParamElement, SegmentElement, MemoryElement, TableElement,
     RegisterReference, FunctionReference, MemoryReference, TableReference,
-    SegmentElement, MemoryElement, TableElement
+    RegisterSpecifier, FunctionSpecifier, MemorySpecifier, TableSpecifier,
+    RegisterDefinition, FunctionDefinition, MemoryDefinition, TableDefinition
 } from "./parser.js";
 
-// global compiler state (updated by `compile` on each invocation)...
+/* --{ THE GLOBAL COMPILER STATE }------------------------------------------ */
 
 let SOURCE, URL, INDEXSPACES, SECTIONS;
 
-// useful constants...
+/* --{ USEFUL GLOBAL CONSTANTS }-------------------------------------------- */
 
 const header = [
     0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00
@@ -47,7 +51,8 @@ const views = {
     u64: BigInt64Array, f32: Float32Array, f64: Float64Array,
 };
 
-// compiler error classes...
+/* --{ THE COMPILER ERROR CLASSES }----------------------------------------- */
+
 
 class CompilerError extends PhantasmError {
 
@@ -55,8 +60,8 @@ class CompilerError extends PhantasmError {
 
     constructor(node, text) {
 
-        /* The `node` argument is the offending token, and the `text` argument
-        contains the error message. */
+        /* The `node` argument is the offending token, and the `text`
+        argument contains the error message. */
 
         super(URL, node.location.line, node.location.column, text);
     }
@@ -64,13 +69,11 @@ class CompilerError extends PhantasmError {
 
 class DuplicateTypeError extends CompilerError {
 
-    /* Thrown when a type is explicitly defined, and is a duplicate of another
-    explicitly defined type. */
+    /* Thrown when an explicitly defined type is a duplicate of another. */
 
     constructor(node) {
 
-        /* The `node` argument is the `TypeDefinition` instance, which is the
-        `component` attribute of the offending type definition statement. */
+        /* The `node` argument is the offending `TypeDefinition` instance. */
 
         super(node, "Duplicate function types are not permitted.");
     }
@@ -78,8 +81,8 @@ class DuplicateTypeError extends CompilerError {
 
 class DuplicateIdentifierError extends CompilerError {
 
-    /* Thrown when the user attempts to bind an identifier that is a duplicate
-    of another identifier in the same indexspace. */
+    /* Thrown when the user attempts to bind an identifier that is a
+    duplicate of another identifier in the same indexspace. */
 
     constructor(node) {
 
@@ -91,7 +94,7 @@ class DuplicateIdentifierError extends CompilerError {
 
 class DuplicateLabelError extends CompilerError {
 
-    /* Thrown when the user attempts to bind an label that is a duplicate
+    /* Thrown when the user attempts to bind a label that is a duplicate
     of another label within the same scope. */
 
     constructor(node) {
@@ -104,13 +107,13 @@ class DuplicateLabelError extends CompilerError {
 
 class UnboundIdentifierError extends CompilerError {
 
-    /* Thrown when the user attempts to reference an identifier that does not
-    exist in the appropriate indexspace. */
+    /* Thrown when the user attempts to reference an identifier that does
+    not exist in the appropriate indexspace. */
 
     constructor(type, node) {
 
-        /* The `type` argument is the name of the indexspace as a string, and
-        the `node` argument is the offending token. */
+        /* The `type` argument is the name of the indexspace as a string,
+        and the `node` argument is the offending identifier token. */
 
         const template = "The identifier `${1.v}` is not bound to a {0.s}."
 
@@ -138,8 +141,8 @@ class UnboundIndexError extends CompilerError {
 
     constructor(type, node) {
 
-        /* The `type` argument is the name of the indexspace as a string, and
-        the `node` argument is the offending token. */
+        /* The `type` argument is the name of the indexspace as a string,
+        and the `node` argument is the offending number literal token. */
 
         const template = "The index `{1.v}` is not bound to a {0.s}."
 
@@ -154,13 +157,16 @@ class LabelIndexError extends CompilerError {
 
     constructor(node) {
 
+        /* The `node` argument is the number literal token that expresses
+        the offending index. */
+
         const template = "The given block index ({0.V}) is too high."
 
         super(node, format(template, node));
     }
 }
 
-// helper classes...
+/* --{ THE LOCAL HELPER CLASSES }------------------------------------------- */
 
 class Identity {
 
@@ -195,17 +201,17 @@ class Identity {
 
 class Segment {
 
-    /* A class for representing the state associated with a segment from a memory
-    or table primer, or one of their banks. The parser just returns an array of
-    segment arrays, bound to the `primer` attribute of the component, so this
-    class is used to restructure the data, so it can be passed into whatever
-    section does the actual encoding. */
+    /* A class for representing the state associated with a segment from a
+    memory or table primer, or a bank. The parser just returns an array of
+    segment arrays, which get bound to the `primer` attribute of whichever
+    component the segment belongs to. This class restructures the data, so
+    it can be passed into whatever section does the actual encoding. */
 
     constructor(segment) {
 
-        /* This constructor stashes the segment, then initializes the `explicit`
-        attribute to `false`, making it always `false` for banks, while leaving
-        primers to change it as required. */
+        /* This constructor stashes the segment (as `this.elements`), then
+        initializes the `explicit` attribute to `false`, making it always
+        `false` for banks, and leaving primers to change it as required. */
 
         this.elements = segment;
         this.explicit = false;
@@ -213,31 +219,32 @@ class Segment {
 
     get expression() {
 
-        /* This computed attribute evaluates to an array of bytes that represent
-        the constant expression required to locate the segment. If the instance
-        starts with an explicit `segment` directive, then it is compiled and
-        returned. Otherwise, a `push i32 0` block is returned instead.
+        /* This computed property evaluates to an array of bytes that encode
+        the constant expression that locates the segment. When present, the
+        explicit `segment` directive is encoded, else a `push i32 0` block
+        is synthesized and returned instead.
 
-        Note: This method is not used by banks (only segments of primers). */
+        Note: This method is not used by banks (only primer segments). */
 
-        const i32const = n => [opcodes.const.i32, ...SLEB128(n), encodings.end];
+        const i32 = n => [opcodes.const.i32, ...SLEB128(n), encodings.end];
 
         if (this.explicit) {
 
             const block = this.elements[0].block;
 
-            if (block[0] instanceof NumberLiteral) return i32const(block[0]);
+            if (block[0] instanceof NumberLiteral) return i32(block[0]);
             else return SECTIONS[10].encodeExpression(block);
 
-        } else return i32const(0);
+        } else return i32(0);
     }
 
     get payload() {
 
-        /* This computed attribute evaluates to an array containing all of the
-        elements in the segment (excluding the initial segment-directive when
-        present). The elements are still represented as abstract nodes (not as
-        bytes), ready to be encoded by the appropriate `encode` method. */
+        /* This computed attribute evaluates to an array containing all of
+        the elements in the segment (excluding the initial segment-directive,
+        when present). The elements are still represented as abstract nodes
+        (not as bytes) at this point, ready to be encoded by the appropriate
+        `encode` method (`DataSection.encode` or `ElementSection.encode`). */
 
         return this.elements.slice(1 * this.explicit);
     }
@@ -250,12 +257,11 @@ class ArraySegment extends Segment {
     constructor(index, segment, id) {
 
         /* This constructor takes the index of the parent memory or table,
-        the segment that the class abstracts (an array of elements), and
-        the section ID that this instance needs to be passed to (either `9`
-        or `11` - Element Section or Data Section). The method passes the
-        segment to the base class (`Segment`), stashes the index, and notes
-        whether this segment is explicitly located, before passing the ins-
-        tance on to the section that encodes it. */
+        the segment that the class abstracts (an array of elements), and a
+        section ID (either `9` or `11` - Element Section or Data Section).
+        The method passes the segment to the base class (`Segment`), then
+        stashes the index, notes whether this segment is explicitly located,
+        before passing the instance on to the section that encodes it. */
 
         super(segment);
         this.index = index;
@@ -266,13 +272,14 @@ class ArraySegment extends Segment {
 
 class MemorySegment extends ArraySegment {
 
-    /* This helper class represents a segment from a memory primer (not a bank),
-    which must be encoded within the Data Section (after any banks). */
+    /* This helper class represents a segment from a memory primer (not a
+    bank), which must be encoded within the Data Section (after any memory
+    banks). */
 
     constructor(index, segment) {
 
-        /* This constructor passes the given index and segment to `super`, with
-        the ID for the Data Section (`11`). */
+        /* This constructor passes the given index and segment to `super`,
+        with the ID for the Data Section (`11`). */
 
         super(index, segment, 11);
     }
@@ -280,13 +287,14 @@ class MemorySegment extends ArraySegment {
 
 class TableSegment extends ArraySegment {
 
-    /* This helper class represents a segment from a table primer (not a bank),
-    which must be encoded within the Element Section (after any banks). */
+    /* This helper class represents a segment from a table primer (not a
+    bank), which must be encoded within the Element Section (after any
+    table banks). */
 
     constructor(index, segment) {
 
-        /* This constructor passes the given index and segment to `super`, with
-        the ID for the Element Section (`9`). */
+        /* This constructor passes the given index and segment to `super`,
+        with the ID for the Element Section (`9`). */
 
         super(index, segment, 9);
     }
@@ -294,14 +302,14 @@ class TableSegment extends ArraySegment {
 
 class MemoryBankSegment extends Segment {
 
-    /* This helper class represents a memory bank, which is encoded to a single
-    segment in the Data Section (before any memory primer segments). */
+    /* This helper class represents a memory bank, which is encoded to a
+    single segment in the Data Section (before any primer segments). */
 
     constructor(segment) {
 
-        /* This constructor passes the only segment of the primer to the parent
-        constructor (allowing this instance to function like a regular segment),
-        before passing the instance to the Data Section. */
+        /* This constructor passes the only segment of the primer to the
+        parent constructor (allowing this instance to be processed like a
+        regular segment), before passing the instance to the Data Section. */
 
         super(segment[0]);
         SECTIONS[11].append(this);
@@ -310,21 +318,22 @@ class MemoryBankSegment extends Segment {
 
 class TableBankSegment extends Segment {
 
-    /* This helper class represents a table bank, which is encoded to a single
-    segment in the Element Section (before any table primer segments). */
+    /* This helper class represents a table bank, which is encoded to a
+    single segment in the Element Section (before any primer segments). */
 
     constructor(segment) {
 
-        /* This constructor passes the only segment of the primer to the parent
-        constructor (allowing this instance to function like a regular segment),
-        before passing the instance to the Element Section. */
+        /* This constructor passes the only segment of the primer to the
+        parent constructor (allowing this instance to be processedlike a
+        regular segment), before passing the instance to the Element
+        Section. */
 
         super(segment[0]);
         SECTIONS[9].append(this);
     }
 }
 
-// abstract bases classes for the sections...
+/* --{ THE ABSTRACT BASE CLASSES FOR THE BINARY SECTIONS}------------------- */
 
 class DatumSection {
 
@@ -340,11 +349,11 @@ class DatumSection {
 
     compile() {
 
-        /* This method compiles the instance to a complete section, including the
-        section ID, its length in bytes and the payload, which will always be an
-        Unsigned LEB128 encoded integer. */
+        /* This method compiles the instance to a complete section, including
+        the section ID, its length in bytes and the payload, which will always
+        be an Unsigned LEB128 encoded integer in practice. */
 
-        if (this.payload === undefined) return []; // return no bytes if unused
+        if (this.payload === undefined) return []; // omit section, if unused
 
         const payload = ULEB128(this.payload);
         const bytes = ULEB128(payload.length);
@@ -369,10 +378,10 @@ class VectorSection {
 
     append(item) {
 
-        /* This method takes an item (statement, component etc), pushes it to
-        the `items` array, and invokes the `encode` method of the derived class,
-        which is responsible for encoding the item and pushing its bytes to the
-        `payload` array. */
+        /* This method takes an item (statement or component etc), pushes it
+        to the `items` array, and invokes the `encode` method of the derived
+        class, which is responsible for encoding the item, then pushing each
+        resulting byte to the `payload` array. */
 
         this.items.push(item);
         this.encode(item);
@@ -380,21 +389,22 @@ class VectorSection {
 
     push(...bytes) {
 
-        /* This method concatenates any number of argument bytes (represented as
-        Numbers between `0` and `255`) to the `payload` array, updating it in place.
-        The method is provided as a convenience to derived classes. */
+        /* This method concatenates any number of argument bytes (represented
+        as numbers between `0` and `255`) to the `payload` array, updating it
+        in place. */
 
         this.payload = this.payload.concat(bytes);
     }
 
     pushVector(array, callback, bytewise=true) {
 
-        /* This method takes an array and a callback, and encodes the array by passing each
-        of its items through the callback, and flattening the results, before encoding the
-        result as a vector, pushing its bytes to the `payload` array. The optional third
-        arguemnt (`bytewise`) is a bool that determines whether the vector length will
-        be the number of bytes in the compiled result (when `bytewise === true`) or
-        the number of items in the input array (when `bytewise === false`). */
+        /* This method takes an array and a callback, and encodes the array by
+        passing each of its items through the callback, which returns an array
+        of results. The results are flattened, before everything is encoded as
+        a vector, then pushed to the `payload` array. The optional third argu-
+        ment (`bytewise`) is a bool that determines whether the length of the
+        vector will be the number of bytes in the compiled result (`true`) or
+        the number of items in the input array (`false`). */
 
         const payload = array.map(item => callback(item)).flat();
         const length = bytewise ? payload.length : array.length;
@@ -404,19 +414,18 @@ class VectorSection {
 
     pushExpression(block) {
 
-        /* This helper method takes a `block` array that contains a constant expression
-        that was expressed fully (as a block of one or more constant instructions), and
-        encodes the instructions, updating the `payload` array. */
+        /* This method takes a `block` array containing a constant expression,
+        and encodes it, updating the `payload` array. */
 
         this.push(...SECTIONS[10].encodeExpression(block));
     }
 
     pushUTF8(literal) {
 
-        /*This method takes a StringLiteral token instance, pushes the Unsigned LEB128
-        encoded length of the string (in UTF-8 bytes) to the `payload` array, and then
-        pushes the bytes themselves. This is how strings are represented in the binary
-        format. */
+        /* This method takes a `StringLiteral` token instance, Unsigned LEB128
+        encodes the length of the string (in UTF-8 bytes), then pushes both the
+        length of the string and its UTF-8 bytes to the `payload` array. This
+        is how name strings are represented in the binary format. */
 
         const bytes = encodeUTF8(literal.value);
 
@@ -426,10 +435,10 @@ class VectorSection {
 
     pushLimits(component, shared=false) {
 
-        /* This method takes a component with `min` and `max` attributes that describe
-        the limits of a memory or table, as well as an optional bool that is `true` for
-        shared limits, and `false` otherwise. The method encodes the limits, and pushes
-        them to the `payload` array. */
+        /* This method takes a component with `min` and `max` attributes that
+        describe the limits of a memory or table, as well as an optional bool
+        that is `true` for shared limits, and `false` otherwise. This method
+        encodes the limits, then pushes the result to the `payload` array. */
 
         if (not(component.max)) this.push(0x00, ...ULEB128(component.min));
         else {
@@ -441,33 +450,33 @@ class VectorSection {
 
     compile() {
 
-        /* This method compiles the instance to a complete section, including the
-        section ID, the length (bytewise), and the payload vector. */
+        /* This method compiles the instance to a complete section, including
+        the section ID, the length (bytewise), and the payload vector. */
 
-        if (this.items.length === 0) return []; // return no bytes for an empty section
+        if (this.items.length === 0) return []; // omit any empty sections
 
         const encode = item => item instanceof Identity ? item.bytes : item;
 
         const payload = this.payload.map(encode).flat();
-        const vLength = ULEB128(this.items.length);                 // vector length
-        const bLength = ULEB128(vLength.length + payload.length);   // bytewise length
+        const vLength = ULEB128(this.items.length);
+        const bLength = ULEB128(vLength.length + payload.length);
 
         return [this.id].concat(bLength).concat(vLength).concat(payload);
     }
 }
 
-// concrete classes for the sections...
+/* --{ THE CONCRETE CLASSES FOR THE BINARY SECTIONS}------------------------ */
 
 class StartSection extends DatumSection {
 
-    /* This concrete class inherits everything it needs from its parent to implement
-    the Start Section, where the payload is just a function index. */
+    /* This concrete class inherits everything it needs to implement the
+    Start Section, where the payload is just a function index. */
 }
 
 class DataCountSection extends DatumSection {
 
-    /* This class implements the DataCount Section, which is a datum section
-    that stores the number of items in the Data Section. */
+    /* This class implements the DataCount Section, which stores a count of
+    the items in the Data Section. */
 
     constructor(id) {
 
@@ -478,8 +487,8 @@ class DataCountSection extends DatumSection {
     append(segment) {
 
         /* This method ignores it argument, but accepts one to be consistent
-        with the `Vector.append` method. It increments the data count each
-        time it is called. */
+        with the `VectorSection.append` method. It increments the data count
+        each time it is called. */
 
         this.payload++;
     }
@@ -487,8 +496,8 @@ class DataCountSection extends DatumSection {
 
 class TypeSection extends VectorSection {
 
-    /* A singleton class that implements the Type Section, which is a vector of
-    type defintions. */
+    /* A singleton class that implements the Type Section, which is a vector
+    of type defintions. */
 
     constructor(id) {
 
@@ -498,10 +507,10 @@ class TypeSection extends VectorSection {
 
     static serializeTypeExpression(type) {
 
-        /* This static method takes a type expression, serializes it in a deter-
-        ministic way that is unique for any possible type expression, then returns
-        the resulting string. This is used to check whether the given expression
-        expresses a unique type. */
+        /* This static method takes a type expression node, serializes it in a
+        deterministic way that is unique for each distinct type, then returns
+        the resulting string. This is used to check whether the given type
+        expression expresses a unique type. */
 
         const encode = param => param.type.value;
         const params = type.params.map(encode);
@@ -512,18 +521,21 @@ class TypeSection extends VectorSection {
 
     static referenceType(reference, byIndex=false) {
 
-        /* This helper takes a type reference, and resolves it, returning the
-        `TypeExpression` node of the referenced type definition by default, or
-        returns its index when the `byIndex` argument is truthy, assuming that
-        everything is valid. If the reference uses an undefined identity or an
-        index for an implicitly defined type, an exception is raised. */
+        /* This method takes a type (either a reference or expression), then
+        resolves it, and returns the `TypeExpression` node of the referenced
+        type definition by default, or its index when the `byIndex` argument
+        is truthy (assuming that everything is valid). If the reference uses
+        an undefined identity or an index for an implicitly defined type, an
+        exception is raised. */
 
         const index = resolveIdentity("type", reference.identity);
         const type = INDEXSPACES.components.type[index];
 
-        if (type instanceof TypeDefinition) return byIndex ? index : type.type;
+        if (type instanceof TypeDefinition) {
 
-        if (reference.identity instanceof Identifier) {
+            return byIndex ? index : type.type;
+
+        } else if (reference.identity instanceof Identifier) {
 
             throw new UnboundIdentifierError("type", reference.identity);
 
@@ -534,25 +546,23 @@ class TypeSection extends VectorSection {
 
         /* This method is used to resolve the type of a function specifier or
         definition, or any of the various instructions that are able to use a
-        type reference or type expression to express their types, with any
-        parities implicitly registering the expressed type when it is unique.
+        type reference or type expression to express their types.
 
-        This method takes a node and resolves its `type` attribute, returning
-        the (possibly new) type index.
-
-        If a type reference is used, the result is checked to ensure that the
-        type was explicitly defined (not implicitly defined by this method for
-        an earlier function or instruction), raising an error otherwise. */
+        This method takes a component node and resolves its `type` attribute,
+        returning the (possibly new) type index. If a type reference is used,
+        the result is checked to ensure that the type was explicitly defined
+        (not implicitly defined (by this method) for an earlier function or
+        instruction), and raises an error if not. */
 
         if (component.type instanceof TypeExpression) {
 
-            const string = TypeSection.serializeTypeExpression(component.type);
+            const type = TypeSection.serializeTypeExpression(component.type);
 
-            if (string in this.types) return this.types[string];
+            if (type in this.types) return this.types[type];
 
             const index = registerComponent("type", component, false);
 
-            this.encodeType(component.type, string, index);
+            this.pushType(component.type, type, index);
             this.items.push(component);
 
             return index;
@@ -560,12 +570,13 @@ class TypeSection extends VectorSection {
         } else return TypeSection.referenceType(component.type, true);
     }
 
-    encodeType(type, string, index) {
+    pushType(type, string, index) {
 
-        /* This helper method takes a type expression node, the corresponding type
-        string, and the index of the type expressed by the type expression. The
-        helper encodes the type, pushing the bytes to the `payload` array, and
-        then notes the expressed type in the `types` hash. */
+        /* This method takes a type expression, the serialized representation
+        of the expressed type (as returned by `serializeTypeExpression`), and
+        its index (within the `type` indexspace). The helper encodes the type,
+        pushing the bytes to the `payload` array, while noting the expressed
+        type in the `types` hash. */
 
         this.push(encodings.type);
         this.pushVector(type.params, token => encodings[token.type.value]);
@@ -575,41 +586,39 @@ class TypeSection extends VectorSection {
 
     encode(statement) {
 
-        /* This method takes a statement node that defines a new function-type, and
-        updates this section instance accordingly, registering the identifier (when
-        one is present) and the type, then encoding the type, pushing the bytes
-        to the `payload` array. */
+        /* This method takes a statement that defines a new type. It updates
+        the section instance accordingly, registering any identifier and the
+        type, then pushing the encoded type to the `payload` array. */
 
         const component = statement.component;
         const string = TypeSection.serializeTypeExpression(component.type);
 
         if (string in this.types) throw new DuplicateTypeError(component);
-        else this.encodeType(component.type, string, component.index);
+        else this.pushType(component.type, string, component.index);
     }
 }
 
 class ImportSection extends VectorSection {
 
-    /* A singleton class that implements the Import Section, which is a vector of
-    core component imports. */
+    /* A singleton class that implements the Import Section, which is a vector
+    of component imports. */
 
     encode(statement) {
 
-        /* This method takes an import-statement node, encodes the module and field
-        names, then passes the encoding of the component to a type specific method,
-        based on what is being imported. */
+        /* This method takes an import-statement, encodes its module and field
+        names, and passes the statement to the method (below) that corresponds
+        to the component type (and that method handles the actual encoding). */
 
         this.pushUTF8(statement.modulename);
         this.pushUTF8(statement.fieldname);
-        this["encode_" + statement.component.name](statement);
+        this["push_" + statement.component.name](statement);
     }
 
-    encode_function(statement) {
+    push_function(statement) {
 
-        /* This method takes the statement passed to `encode`, when the component is
-        a function. It registers the function and any identifier, then encodes it and
-        updates the `payload` array, as well as the Type Section and Start Section,
-        where required. */
+        /* This method takes a statement that imports a function. It encodes
+        the function, updating the `payload` array, and updating the Start
+        Section where required. */
 
         const component = statement.component;
 
@@ -618,28 +627,28 @@ class ImportSection extends VectorSection {
         if (component.start) SECTIONS[8].payload = component.index;
     }
 
-    encode_table(statement) {
+    push_table(statement) {
 
-        /* This method handles the statement passed to `encode`, when the component
-        is a table. */
+        /* This method takes a statement that imports a table, encodes it, and
+        pushes the result to the `payload` array. */
 
         this.push(0x01, encodings[statement.component.type.value]);
         this.pushLimits(statement.component);
     }
 
-    encode_memory(statement) {
+    push_memory(statement) {
 
-        /* This method handles the statement passed to `encode`, when the component
-        is a memory. */
+        /* This method takes a statement that imports a memory, encodes it,
+        and pushes the result to the `payload` array. */
 
         this.push(0x02);
         this.pushLimits(statement.component, statement.component.shared);
     }
 
-    encode_register(statement) {
+    push_register(statement) {
 
-        /* This method handles the statement passed to `encode`, when the component
-        is a register. */
+        /* This method takes a statement that imports a register, encodes it,
+        and pushes the result to the `payload` array. */
 
         this.push(0x03, encodings[statement.component.type.value]);
         this.push(Number(not(statement.component.constant)));
@@ -653,7 +662,8 @@ class ExportSection extends VectorSection {
 
     encode(statement) {
 
-        /* This method takes an export statement, and encodes it. */
+        /* This method takes an export statement, and encodes it, updating the
+        `payload` array. */
 
         const {name, identity} = statement.component;
 
@@ -665,14 +675,15 @@ class ExportSection extends VectorSection {
 class FunctionSection extends VectorSection {
 
     /* A singleton class that implements the Function Section, a vector of
-    function-type indicies, one for each locally defined function. */
+    type indicies, representing the function indexspace, with each function
+    represented by its type (its locals and instructions are stored in the
+    Code Section). */
 
     encode(statement) {
 
         /* This method encodes a function definition statement, updating the
-        payload with the function type, and passing the statement node on to
-        the `append` method of the Function Section, which encodes the local
-        registers and instructions. */
+        `payload` array with the function type, before passing the statement
+        on to `CodeSection.append` to encode the locals and instructions. */
 
         this.push(...ULEB128(SECTIONS[1].resolveType(statement.component)));
         SECTIONS[10].append(statement);
@@ -681,15 +692,15 @@ class FunctionSection extends VectorSection {
 
 class GlobalSection extends VectorSection {
 
-    /* A singleton class that implements the Global Section, which is a vector of
-    registers, encoded to their type and their constant expression block. */
+    /* A singleton class that implements the Global Section, which is a vector
+    of registers, encoded to their type and constant expression initializer. */
 
     encode(statement) {
 
-        /* This method takes a `DefineStatement` instance for a register definition,
-        and encodes it, updating the `payload` array. The given statement will always
-        include a constant expression, whether it is defined implicitly (and passed to
-        `encodeInitializer`) or expressed fully (and passed to `pushExpression`). */
+        /* This method takes a register definition statement, and encodes it,
+        updating the `payload` array. The given statement will always include
+        a constant expression, whether it is defined implicitly (and passed to
+        `encodeInitializer`) or explicitly (and passed to `pushExpression`). */
 
         const block = statement.component.block;
 
@@ -702,52 +713,47 @@ class GlobalSection extends VectorSection {
 
     encodeInitializer(component) {
 
-        /* This helper method takes a register definition that either uses an implicit
-        initializer (by omission) or uses the `as` prefix (instead of a proper constant
-        expression). The parser represents these expressions by storing a single token
-        in the `block` array (instead of one or more instructions).
+        /* This method takes a register definition that either has an implicit
+        initializer, or uses the `as` prefix (instead of an explicit constant
+        expression). The parser represents this sugar (in the `block` array)
+        with tokens that are distinct from actual instructions.
 
-        This method looks at the component (and especially the token stored in `block[0]`)
-        to figure out which instruction is being implied, and encode it, before appending
-        the `end` pseudo-instruction, to finalize the implied constant expression.
+        The method looks at the given component (especially the token stored
+        in `block[0]`) to figure out which instruction is being implied, and
+        encode it, before appending the `end` pseudo-instruction to finalize
+        the implied constant expression.
 
-        A register with an implicit initializer stores its valtype. Numtype registers
-        imply zero (using `const` operations), while reftype registers imply null (and
-        use `ref.null` operations):
+        A register with an implicit initializer stores its valtype: Numtypes
+        imply a zero constant, while reftypes imply null:
 
-            define constant i32                 push i32 0          i32.const 0
-            define constant i64                 push i64 0          i64.const 0
-            define constant f32                 push f32 0          f32.const 0
-            define constant f64                 push f64 0          f64.const 0
-            define constant pointer             push null pointer   ref.null func
-            define constant proxy               push null proxy     ref.null extern
+            define constant i32         push i32 0          i32.const 0
+            define constant i64         push i64 0          i64.const 0
+            define constant f32         push f32 0          f32.const 0
+            define constant f64         push f64 0          f64.const 0
+            define constant pointer     push null pointer   ref.null func
+            define constant proxy       push null proxy     ref.null extern
 
-        Numtype registers with an explicit initializer (expressed as a `NumberLiteral`)
-        store the literal token. This implies a `const` operation of the same numtype,
-        and using the number expressed by the literal:
+        Numtype registers with an explicit initializer (which is expressed as
+        a `NumberLiteral`) store the literal token:
 
-            define constant i32 as 1            push i32 1          i32.const 1
-            define constant i64 as 2            push i64 2          i64.const 2
-            define constant f32 as 3.4          push f32 3.4        f32.const 3.4
-            define constant f64 as 5.6          push f64 5.6        f64.const 5.6
+            define constant i32 as 1      push i32 1        i32.const 1
+            define constant i64 as 2      push i64 2        i64.const 2
+            define constant f32 as 3.4    push f32 3.4      f32.const 3.4
+            define constant f64 as 5.6    push f64 5.6      f64.const 5.6
 
-        Pointer registers that imply a function reference with a `NumberLiteral` or an
-        `Identifier` store the `NumberLiteral` or `Identifier` instance. This implies
-        a `ref.func` operation, using the index expressed by the literal or bound to
-        the identifier as the reference (excepting unbound identifiers). This looks
-        just like the previous numtype examples:
+        Pointer registers with an explicit initializer (which is expressed as
+        an identity) store the `NumberLiteral` or `Identifier` instance. This
+        implies a `ref.func` operation (excepting unbound identifiers):
 
-            define constant pointer as 1        push pointer 1      ref.func 1
-            define constant pointer as $foo     push pointer $foo   ref.func $foo
+            define constant pointer as 1    push pointer 1      ref.func 1
+            define constant pointer as $p   push pointer $foo   ref.func $foo
 
-        Proxy registers cannot use the `as` keyword, as there is nothing to imply with a
-        number literal, identifier, type *et cetera* that would make intuitive sense, so
-        anything like that will have been rejected by the parser already:
+        Proxy registers cannot use the `as` keyword, as there is nothing to
+        imply with a number literal, identifier, type *et cetera* that would
+        meaningfully express a proxy.
 
-            define constant proxy as <any>      ProxyIdentityError
-
-        Note: The parser already validated the instruction, so invalid permutations of
-        register type and implied instruction are not possible at this stage. */
+        Note: The parser already validated the instruction (in terms of its
+        register type and implied instruction). */
 
         const encoders = {
             i32: SLEB128, i64: SLEB128, pointer: ULEB128,
@@ -758,24 +764,24 @@ class GlobalSection extends VectorSection {
         const valtype = component.type.value;
         const encode = encoders[valtype];
 
-        if (instruction instanceof Primitive) {                     // implicit numtype
+        if (instruction instanceof Primitive) {
 
             this.push(opcodes.const[valtype], ...encode(0));
 
-        } else if (instruction instanceof Identifier) {             // identifier
+        } else if (instruction instanceof Identifier) {
 
             const index = resolveIdentifier("function", instruction);
 
             this.push(opcodes.ref.func, ...ULEB128(index));
 
-        } else if (instruction instanceof NumberLiteral) {          // number literal
+        } else if (instruction instanceof NumberLiteral) {
 
             if (valtype === "pointer") this.push(opcodes.ref.func);
             else this.push(opcodes.const[valtype]);
 
             this.push(...encode(instruction));
 
-        } else this.push(opcodes.ref.null, encodings[valtype]);     // implicit reftype
+        } else this.push(opcodes.ref.null, encodings[valtype]);
 
         this.push(encodings.end);
     }
@@ -783,16 +789,16 @@ class GlobalSection extends VectorSection {
 
 class CodeSection extends VectorSection {
 
-    /* A singleton class that implements the Code Section, which is a vector of
-    code entries, which each combine a vector of locals with a block expression
-    that together represent a function implementation.
+    /* A singleton class that implements the Code Section, which is a vector
+    of code entries, each encoding to a vector of its locals and its constant
+    expression (that together represent the function implementation).
 
     This class includes a static generator method for encoding any instruction,
     and another for encoding a constant expression (a block of instructions),
     both yielding the encoded byte-stream.
 
-    This class also provides static generator methods for compiling each of the
-    individual instructions. */
+    This class also implements the methods that compile each of the individual
+    instructions. */
 
     constructor(id) {
 
@@ -805,10 +811,8 @@ class CodeSection extends VectorSection {
 
     resolveLocal(identity) {
 
-        /* This helper works like `resolveIdentity`, except that it operates on
-        local registers. It takes an identity, and tries to return the index of
-        the local that the identity is bound to, raising the appropriate error
-        otherwise. */
+        /* This generator takes a local, and returns its index, assuming that
+        it is currently within scope, throwing an exception otherwise. */
 
         if (identity instanceof NumberLiteral) {
 
@@ -828,8 +832,8 @@ class CodeSection extends VectorSection {
 
     resolveLabel(label) {
 
-        /* This helper generator takes a label, and returns its index, assuming
-        that its is currently within scope, throwing an exception otherwise. */
+        /* This generator takes a label, and returns its index, assuming that
+        it is currently within scope, throwing an exception otherwise. */
 
         if (label instanceof NumberLiteral) {
 
@@ -845,18 +849,18 @@ class CodeSection extends VectorSection {
 
     * encodeInstruction(instruction) {
 
-        /* This static helper method takes an instruction, and passes it on to the
-        appropriate generator method (bound to the singleton instance of this class),
-        yielding each of the bytes that are yielded by that method (which actually
-        compiles the given instruction). */
+        /* This method takes an instruction, and passes it to the appropriate
+        method (bound to the instance of this class) for the given mnemonic,
+        yielding each of the bytes that are yielded by that method. */
 
         yield * SECTIONS[10][instruction.constructor.name](instruction);
     }
 
     * encodeExpression(block) {
 
-        /* This static helper method takes a block of instructions, and encodes it (to
-        a wasm-expression), yielding each of the bytes, including the `end` byte. */
+        /* This static helper method takes a block of instructions, encodes it
+        to a constant expression, then yields each of the resulting bytes,
+        including the byte for the `end` pseudo-instruction. */
 
         yield * block.map(function(instruction) {
 
@@ -867,8 +871,9 @@ class CodeSection extends VectorSection {
 
     * GETSET(instruction, set) {
 
-        /* This helper handles the `get` and `set` mnemonics. It takes a bool that
-        must be `true` for `set` instructions, and `false` for `get`. */
+        /* This helper is used by `GET` and `SET`. It takes the instruction to
+        be encoded, and a bool that must be `true` for `set` instructions, and
+        `false` for `get` instructions. */
 
         const {scope, identity} = instruction;
 
@@ -891,14 +896,15 @@ class CodeSection extends VectorSection {
 
     * ISNOT(instruction, options) {
 
-        /* This helper compiles the `is` and `not` mnemonics (except `is null`).
-        It takes a reference to the instruction and a hash of options that maps
-        each *test* ("more", "equal", "zero" *et cetera*) to a hash containing a
-        pair of arrays, named `types` and `codes` (see `IS` and `NOT` to review
-        the actual data structures). The opcode is selected and returned, using
-        the `test` and `type` properties of the instruction to map the index of
-        the type in the `types` array to the opcode in the `codes` array, based
-        on whichever test the instruction performs. */
+        /* This helper is used by `IS` and `NOT` (except when `is null`). It
+        takes a reference to the instruction and a hash of options that maps
+        each *test* ("more", "equal", "zero" *et cetera*) to a hash that has
+        a pair of arrays, named `types` and `codes`, as its attributes.
+
+        The opcode is returned, using the `test` and `type` properties of the
+        instruction to map the index of the type (in the `types` array) to the
+        opcode in the `codes` array, based on the test that the instruction
+        performs. See `IS` and `NOT` for more information. */
 
         const option = options[instruction.test.value];
 
@@ -907,9 +913,9 @@ class CodeSection extends VectorSection {
 
     * GROWFILLSIZE(instruction, opcode) {
 
-        /* This helper is used by the `GROW`, `FILL` and `SIZE` methods to encode
-        the form common to those three instructions, that uses the 0xFC prefix, an
-        Unsigned LEB128 encoded integer and a memory or table index. */
+        /* This helper is used by `GROW`, `FILL` and `SIZE` to encode the form
+        common to those instructions that uses the 0xFC prefix and an Unsigned
+        LEB128 encoded opcode, with a memory or table index. */
 
         const type = instruction.component.value;
         const identity = instruction.identity;
@@ -919,7 +925,7 @@ class CodeSection extends VectorSection {
 
     * ATOMICS(instruction, opcode) {
 
-        /* This helper is used for all of the regular atomic instructions. It
+        /* This helper is used by all of the regular atomic instructions. It
         takes a reference to the instruction, and the opcode for its `i32`
         variant (the remaining opcodes are sequential and orderly). The
         compiled instruction is yielded bytewise. */
@@ -931,20 +937,23 @@ class CodeSection extends VectorSection {
             i64u32: [opcode + 6, 0x02]
         };
 
-        const key = instruction.type.value + (instruction.datatype?.value || "");
+        const {type, datatype, offset} = instruction;
+        const key = type.value + (datatype?.value || "");
 
-        yield * [0xFE, ...opcodes[key], ...ULEB128(instruction.offset)];
+        yield * [0xFE, ...opcodes[key], ...ULEB128(offset)];
     }
 
     * BLOCKS(instruction, opcode) {
 
         /* This helper method compiles the block-instruction specified by the
-        `opcode` argument (one of `block`, `loop` or `branch`), except for any
-        `else` blocks of `branch` instructions, which are handled by `BRANCH`.
+        `opcode` argument (one of `block`, `loop` or `branch`).
 
         The `labels` stack is updated (either with the instruction identifier
-        or `undefined`), effectively recursively, pushing a label before the
-        block is encoded, and popping the label afterwards.
+        or `undefined`), recursively, pushing the label before the block is
+        encoded, and popping the label afterwards.
+
+        Note: Any `else` blocks of `branch` instructions are handled by the
+        `BRANCH` method itself.
 
         Note: The type indices of block instructions (when used) are encoded
         using a 33-bit Signed LEB128 integer (to avoid clobbering the values
@@ -976,7 +985,7 @@ class CodeSection extends VectorSection {
 
         yield * SECTIONS[10].encodeExpression(instruction.block);
 
-        // now the block has been encoded, remove the label from the stack...
+        // now the block has been encoded, pop the label from the stack...
 
         this.labels.pop();
     }
@@ -1027,22 +1036,23 @@ class CodeSection extends VectorSection {
 
     * PUSH(instruction) {
 
-        /* The compiler for the `push` mnemonic. */
+        /* The compiler for the `push` mnemonic, which is used for the WAT
+        instructions `const`, `ref.func` and `ref.null`. */
 
         const {target, name} = instruction;
 
-        if (name === "null") {              // push null <reftype>
-                                            // ref.null <reftype>
+        if (name === "null") {           // push null <reftype>
+                                         // ref.null <reftype>
             yield opcodes.ref.null;
             yield encodings[target.value];
 
-        } else if (name === "pointer") {    // push pointer <function>
-                                            // ref.func <function>
+        } else if (name === "pointer") { // push pointer <function>
+                                         // ref.func <function>
             yield opcodes.ref.func;
             yield new Identity("function", target);
 
-        } else {                            // push [<numtype>] <number-literal>
-                                            // <numtype>.const <number-literal>
+        } else {                         // push [<numtype>] <number-literal>
+                                         // <numtype>.const <number-literal>
             yield opcodes.const[name];
 
             if (["i32", "i64"].includes(name)) yield * SLEB128(target);
@@ -1200,11 +1210,11 @@ class CodeSection extends VectorSection {
 
     * BRANCH(instruction) {
 
-        /* This method compiles the `branch` instruction, including its optional
-        else-block. It uses the `BLOCKS` helper to compile the branch-block with
-        its type and block, while any else-block is compiled locally (replacing
-        the `end` pseudo-instruction with the `else` pseudo-instruction, before
-        encoding the the else-block). */
+        /* This method compiles the `branch` instruction, including any else-
+        block when present. It uses the `BLOCKS` helper to compile the branch-
+        block, while any else-block is compiled locally. This requires that
+        the `end` pseudo-instruction (yielded by `BLOCKS`) is replaced with
+        an `else` pseudo-instruction, before encoding the the else-block). */
 
         const block = this.BLOCKS(instruction, 0x04);
 
@@ -1218,8 +1228,7 @@ class CodeSection extends VectorSection {
 
     * JUMP(instruction) {
 
-        /* The compiler for the `jump` instruction, which encodes to its
-        opcode (0x0C) and its label index. */
+        /* The compiler for the `jump` instruction (`br` in WAT). */
 
         yield 0x0C;
         yield * ULEB128(this.resolveLabel(instruction.identity));
@@ -1227,8 +1236,7 @@ class CodeSection extends VectorSection {
 
     * FORK(instruction) {
 
-        /* The compiler for the `fork` instruction, which encodes to its
-        opcode (0x0D) and its label index. */
+        /* The compiler for the `fork` instruction (`br_if` in WAT). */
 
         yield 0x0D;
         yield * ULEB128(this.resolveLabel(instruction.identity));
@@ -1236,9 +1244,7 @@ class CodeSection extends VectorSection {
 
     * EXIT(instruction) {
 
-        /* The compiler for the `exit` instruction, which is compiled to its
-        opcode (0x0E), followed by a vector of label indices, followed by a
-        single label index. */
+        /* The compiler for the `exit` instruction (`br_table` in WAT). */
 
         yield 0x0E;
         yield * ULEB128(instruction.identities.length - 1);
@@ -1259,7 +1265,8 @@ class CodeSection extends VectorSection {
 
     * INVOKE(instruction) {
 
-        /* The compiler for the `invoke` (`call_indirect`) instruction. */
+        /* The compiler for the `invoke` instruction (`call_indirect` in
+        WAT). */
 
         yield 0x11;
         yield * ULEB128(SECTIONS[1].resolveType(instruction));
@@ -1268,8 +1275,7 @@ class CodeSection extends VectorSection {
 
     * LOAD(instruction) {
 
-        /* This method implements the compiler for the (non-atomic) `load`
-        mnemonic. */
+        /* The compiler for the (non-atomic) `load` mnemonic. */
 
         const codes = {
             i32: [0x28, 2], i64: [0x29, 3],
@@ -1289,8 +1295,7 @@ class CodeSection extends VectorSection {
 
     * STORE(instruction) {
 
-        /* This method implements the compiler for the (non-atomic) `store`
-        mnemonic. */
+        /* The compiler for the (non-atomic) `store` mnemonic. */
 
         const codes = {
             i32: [0x36, 2], i64: [0x37, 3],
@@ -1355,10 +1360,10 @@ class CodeSection extends VectorSection {
 
     * SELECT(instruction) {
 
-        /* This is the compiler for the `select` instruction, which takes one optional
-        valtype immediate, encoded (when present) as a vector (to allow for any future
-        extension). The instruction uses two distinct opcodes, indicating whether the
-        vector is included or not. */
+        /* This is the compiler for the `select` instruction, which takes one
+        optional valtype immediate, encoded (when present) as a vector (to
+        permit extension in future). The instruction uses two distinct
+        opcodes, indicating whether the vector is included or not. */
 
         if (instruction.type === undefined) yield 0x1B;
         else yield * [0x1C, 0x01, encodings[instruction.type.value]];
@@ -1366,8 +1371,9 @@ class CodeSection extends VectorSection {
 
     * COPY(instruction) {
 
-        /* This is the compiler for the `copy` mnemonic, which handles the WebAssembly
-        `memory.copy`, `table.copy`, `memory.init` and `table.init` instructions. */
+        /* This is the compiler for the `copy` mnemonic, which handles the
+        WAT `memory.copy`, `table.copy`, `memory.init` and `table.init`
+        instructions. */
 
         yield 0xFC;
 
@@ -1441,22 +1447,24 @@ class CodeSection extends VectorSection {
 
     * CLZ(instruction) {
 
-        /* This is the compiler for the `clz` (count leading zeros) instruction. */
+        /* This is the compiler for the `clz` instruction (count leading
+        zeros). */
 
         yield instruction.type.value === "i32" ? 0x67 : 0x79;
     }
 
     * CTZ(instruction) {
 
-        /* This is the compiler for the `ctz` (count trailing zeros) instruction. */
+        /* This is the compiler for the `ctz` instruction (count trailing
+        zeros). */
 
         yield instruction.type.value === "i32" ? 0x68 : 0x7A;
     }
 
     * NSA(instruction) {
 
-        /* This is the compiler for the `nsa` (population count) instruction, known
-        as `popcnt` in WAT. */
+        /* This is the compiler for the `nsa` instruction (population count)
+        (`popcnt` in WAT). */
 
         yield instruction.type.value === "i32" ? 0x69 : 0x7B;
     }
@@ -1491,7 +1499,8 @@ class CodeSection extends VectorSection {
 
     * CAST(instruction) {
 
-        /* This is the compiler for the `cast` mnemonic (`reinterpret` in WAT). */
+        /* This is the compiler for the `cast` mnemonic (`reinterpret` in
+        WAT). */
 
         const opcodes = {i32: 0xBC, i64: 0xBD, f32: 0xBE, f64: 0xBF};
 
@@ -1670,7 +1679,8 @@ class CodeSection extends VectorSection {
 
     * ATOMIC_BROKER(instruction) {
 
-        /* The compiler for the `atomic broker` instruction (`cmpxchg` in WAT). */
+        /* The compiler for the `atomic broker` instruction (`cmpxchg` in
+        WAT). */
 
         yield * this.ATOMICS(instruction, 0x48);
     }
@@ -1694,9 +1704,10 @@ class CodeSection extends VectorSection {
             i64i8: [0x1B, 0x00], i64i16: [0x1C, 0x01], i64i32: [0x1D, 0x02]
         };
 
-        const key = instruction.type.value + (instruction.datatype?.value || "");
+        const {type, datatype, offset} = instruction;
+        const key = type.value + (datatype?.value || "");
 
-        yield * [0xFE, ...opcodes[key], ...ULEB128(instruction.offset)];
+        yield * [0xFE, ...opcodes[key], ...ULEB128(offset)];
     }
 
     encode(statement) {
@@ -1709,10 +1720,10 @@ class CodeSection extends VectorSection {
 
         const registerLocalRegister = node => {
 
-            /* This internal helper takes a `node` that defines a local register
-            (either a `ParamElement` or `LocalDefinition`). It always increments
-            the `localIndex` property, before copying any identifier over to the
-            `locals` property, with its local index. */
+            /* This helper takes a `node` that defines a local register (that
+            will be a `ParamElement` or `LocalDefinition`). The helper always
+            increments the `localIndex` property, then copies any identifier
+            over to the `locals` property, with its local index. */
 
             if (node.identifier === undefined) this.localIndex++;
             else if (this.locals[node.identifier.value] === undefined) {
@@ -1732,11 +1743,15 @@ class CodeSection extends VectorSection {
 
         if (component.start) SECTIONS[8].payload = this.index;
 
-        // handle the params or type reference (whichever is present), then handle
-        // any `local` directives (encoding them, and noting any identifiers)...
+        // handle the type reference or expression (whichever is present), and
+        // then handle any `local` directives (encoding them, and noting any
+        // identifiers)...
 
-        if (type instanceof TypeExpression) type.params.forEach(registerLocalRegister);
-        else this.localIndex = TypeSection.referenceType(type).params.length;
+        if (type instanceof TypeExpression) {
+
+            type.params.forEach(registerLocalRegister);
+
+        } else this.localIndex = TypeSection.referenceType(type).params.length;
 
         component.locals.forEach(function(local) {
 
@@ -1767,9 +1782,9 @@ class TableSection extends VectorSection {
     encode(statement) {
 
         /* This method takes a table definition, and encodes the reftype and
-        limits of the table into the table section payload, before slicing
-        any primer into one or more segments, before passing each to the
-        Element Section for encoding. */
+        limits of the table, updating the `payload` array, before slicing any
+        primer into one or more segments, and passing each of the segments to
+        the Element Section for encoding. */
 
         const component = statement.component;
         const {type, primer, index} = component;
@@ -1789,9 +1804,10 @@ class MemorySection extends VectorSection {
 
     encode(statement) {
 
-        /* This method takes a memory definition, and encodes the limits of the
-        memory into the memory section payload, before slicing any primer into
-        one or more segments, and passing each to the Data Section for encoding. */
+        /* This method takes a memory definition, encodes the limits of the
+        memory, updating the `payload` array, before slicing any primer into
+        one or more segments, and passing each segment to the Data Section
+        for encoding. */
 
         const {shared, primer, index} = statement.component;
 
@@ -1803,18 +1819,19 @@ class MemorySection extends VectorSection {
 
 class DataSection extends VectorSection {
 
-    /* A singleton class that implements the Data Section, which is a vector of
-    memory segments (both active and passive), encoded to the memory's index, an
-    offset into the memory (given as a constant expression), and then the bytes,
+    /* A singleton class that implements the Data Section, which is a vector
+    of memory segments (both active and passive), encoded to the memory index,
+    an offset into the memory (given as a constant expression), and the bytes,
     encoded to an internal vector. */
 
     encode(segment) {
 
-        /* This method takes a data segment (unlike most sections, which take a
-        statement). The segment will either be a `MemoryBankSegment` (a passive
-        segment) or a `MemorySegment` from a memory primer (an active segment).
-        The method encodes the segment, before invoking the `append` method of
-        the `DataCountSection` to increment the data segment count. */
+        /* This method takes a data segment (unlike regular `encode` methods,
+        which take a statement). The segment will be a `MemoryBankSegment` (a
+        passive segment) or a `MemorySegment` from a memory primer (an active
+        segment). The method encodes the segment, updating the `payload` array,
+        before invoking the `append` method of `DataCountSection` to increment
+        the data segment count. */
 
         if (segment instanceof MemoryBankSegment) this.push(0x01);
         else this.push(0x02, ...ULEB128(segment.index), ...segment.expression);
@@ -1849,9 +1866,11 @@ class ElementSection extends VectorSection {
 
     encode(segment) {
 
-        /* This method takes a segment (a `TableSegment` or `TableBankSegment`)
-        from a primer for a pointer table or a pointer bank (rather than taking
-        a statement, as most sections do). The method encodes the segment. */
+        /* This method takes a table segment (unlike regular `encode` methods,
+        which take a statement). The segment will be a `TableBankSegment` (a
+        passive segment) or a `TableSegment` from a memory primer (an active
+        segment). The method encodes the segment, updating the `payload`
+        array. */
 
         if (segment instanceof TableBankSegment) this.push(0x05);
         else this.push(0x06, ...ULEB128(segment.index), ...segment.expression);
@@ -1866,8 +1885,8 @@ class ElementSection extends VectorSection {
         corresponding constant expression. Currently, the spec only permits
         pointers (which can be null) in table primers. */
 
-        const nullref = reference => [opcodes.ref.null, reference, encodings.end];
-        const funcref = reference => [opcodes.ref.func, reference, encodings.end];
+        const nullref = ref => [opcodes.ref.null, ref, encodings.end];
+        const funcref = ref => [opcodes.ref.func, ref, encodings.end];
 
         if (element.value.value === "null") return nullref(encodings.pointer);
         else return funcref(new Identity("function", element.value));
@@ -1876,25 +1895,19 @@ class ElementSection extends VectorSection {
 
 class NameSection {
 
-    /* This concrete class implements the Custom Name section of the binary, which
-    preserves the URL of the module and most of the identifiers (used for Wasm to
-    WAT conversion). The Locals Subsection and Labels Subsection have not been
-    implemented yet.
-
-    Note: The plan is to use DWARF to support source-level debugging in DevTools
-    (with breakpoints *et cetera*). However, the Name Section will still always
-    be supported, as it is independently useful. */
+    /* This class implements the (extended) Custom Name section of the binary,
+    which preserves the URL of the module and its identifiers. */
 
     constructor(id) {
 
-        /* This constructor creates an empty `indexspaces` hash that is used to store
-        data passed to the `append` method, and later used by the `compile` method to
-        encode the section. The hash contains a hash for each component type, plus an
-        extra hash for an indirect namemap that represents the locals within each of
-        the functions. */
+        /* This constructor creates an empty `indexspaces` hash that is used
+        to store data passed to the `append` method, and later used by the
+        `compile` method to encode the section. The hash contains a hash for
+        each component type, plus a pair of extra hashes that represent two
+        indirect namemaps, one for locals, another for labels. */
 
         this.id = id;
-        this.label = 0; // used by `appendLabel` to track the current label index
+        this.label = 0; // tracks the current label index
 
         this.indexspaces = {
             register: {}, function: {}, memory: {}, table: {}, type: {},
@@ -1904,8 +1917,8 @@ class NameSection {
 
     static encodeName(name) {
 
-        /* This static helper method takes an arbitrary Unicode string, encodes it
-        as a wasm-name (a wasm-vector of UTF-8 bytes), then returns the result. */
+        /* This static method takes an arbitrary Unicode string, encodes it to
+        a wasm-name (a vector of UTF-8 bytes), then returns the result. */
 
         const bytes = Array.from(encodeUTF8(name));
 
@@ -1914,31 +1927,32 @@ class NameSection {
 
     append(type, identifier, index) {
 
-        /* This helper method takes a component type name and an identifier, both
-        as strings, and the corresponding index. It updates the `indexspaces` hash,
-        before returning `undefined`. */
+        /* This helper method takes a component type name and an identifier,
+        both as strings, and the corresponding index. It updates the corre-
+        sponding `indexspaces` hash, before returning `undefined`. */
 
         this.indexspaces[type][identifier] = index;
     }
 
     appendLocals(index, locals) {
 
-        /* This helper takes a function index (`index`), and a hash (`locals`) that
-        maps any identifiers that are bound to locals (including params) within the
-        function to the corresponding indices. The helper updates the `indexspaces`
-        hash accordingly. */
+        /* This helper takes a function index (`index`), and a hash (`locals`)
+        that maps any identifiers that are bound to locals (including params)
+        within the function to their corresponding indices. The helper updates
+        the `indexspaces` hash accordingly. */
 
         this.indexspaces.locals[index] = locals;
     }
 
     appendLabel(index, instruction) {
 
-        /* This helper method takes a function index and a block-instruction. If the
-        given function index has not been passed to a previous invocation, the helper
-        will create a new hash for the current function in `indexspaces.labels`, and
-        will reset the `labels` attribute to zero. Once that has been done, the ins-
-        truction is checked for an identifier (a label), registers it when present,
-        then increments the `label` attribute either way. */
+        /* This helper method takes a function index and a block-instruction.
+        If the given index has not been passed to a previous invocation, the
+        helper will create a new hash for the current function in the `labels`
+        space, and will reset the `labels` attribute to zero. Once that has
+        been done, the instruction is checked for an identifier (a label),
+        registers it when present, then increments the `label` attribute
+        either way. */
 
         if (this.indexspaces.labels[index] === undefined) {
 
@@ -1957,17 +1971,17 @@ class NameSection {
 
     encodeSubsection(id, payload) {
 
-        /* This helper method takes a subsection ID and a payload array, encodes
-        the arguments into a subsection, then returns the result. */
+        /* This helper method takes a subsection ID and a payload array. It
+        encodes the arguments into a subsection, then returns the result. */
 
         return [id].concat(ULEB128(payload.length)).concat(payload);
     }
 
     encodeNameMap(id, type) {
 
-        /* This helper method takes a subsection ID and a type name. It uses them to
-        reference the approriate `indexspaces` entry, and encodes the stored data as
-        a wasm-namemap, before returning the result. */
+        /* This helper method takes a subsection ID and a type name. It uses
+        them to reference the approriate `indexspaces` entry, and encodes the
+        stored data as a namemap, before returning the result. */
 
         const sortItems = (a, b) => a[1].index - b[1].index;
 
@@ -1990,9 +2004,9 @@ class NameSection {
 
     encodeIndirectNameMap(id, type) {
 
-        /* This helper method takes a subsection ID and a type name. It uses them to
-        reference the approriate `indexspaces` entry, and encodes the stored data as
-        a wasm-indirect-namemap, before returning the result. */
+        /* This helper method takes a subsection ID and a type name. It uses
+        them to reference the approriate `indexspaces` entry, and encodes the
+        stored data as an indirect namemap, before returning the result. */
 
         const sortItems = (a, b) => a[1] - b[1];
         const sortMaps = (a, b) => parseInt(a[0]) - parseInt(b[0]);
@@ -2024,8 +2038,9 @@ class NameSection {
 
     compile() {
 
-        /* This method compiles the instance to an array of bytes that represent
-        the Custom Name Section of the binary, then returns the result. */
+        /* This method compiles the instance to an array of bytes, which
+        represents the Custom Name Section of the binary, then returns the
+        result. */
 
         const data = [
             {id: 1, type: "function", direct: true},
@@ -2055,15 +2070,16 @@ class NameSection {
     }
 }
 
-// global compiler functions...
+/* --{ THE LOCAL HELPER FUNCTIONS }----------------------------------------- */
 
 const registerComponent = function(type, component, bind=false) {
 
-    /* This helper takes an indexspace name, a component node and a bool that defaults to
-    `false`. The helper pushes the component to the appropriate indexspace, and if the bool
-    is truthy, its identifier is also bound to the new index. In either case, the index is
-    returned. This allows imports and definitions to register the different the types of
-    component that they introduce, and optionally bind their identifiers. */
+    /* This helper takes an indexspace name, a component node and a bool that
+    defaults to `false`. The helper pushes the component to the appropriate
+    indexspace, and if the bool is truthy, its identifier is also bound to the
+    new index. In either case, the index is returned. This allows imports and
+    definitions to register the different the types of component that they
+    introduce, and optionally bind their identifiers. */
 
     const index = INDEXSPACES.components[type].push(component) - 1;
 
@@ -2074,46 +2090,51 @@ const registerComponent = function(type, component, bind=false) {
 
 const resolveComponent = function(type, index) {
 
-    /* This helper takes a indexspace name and an index, and returns the corresponding
-    component, or `undefined` if it does not exist. */
+    /* This helper takes a indexspace name (`type`) and an index, and returns
+    the corresponding component, or `undefined` if it does not exist. */
 
     return INDEXSPACES.components[type][index];
 };
 
 const registerIdentifier = function(type, node, index) {
 
-    /* This helper takes an indexspace name, an identifier node (that may be `undefined`)
-    and an index (as a Number). If the identifier is defined and unique within its index-
-    space, it is bound to the given index in the given indexspace, and if the identifier
-    is `undefined`, nothing happens. If it is a duplicate identifier, then an exception
-    is raised. Otherwise, the function always returns `undefined`. */
+    /* This helper takes an indexspace name (`type`), an identifier node (that
+    may be `undefined`) and an index. If the identifier is defined and unique
+    (within its indexspace), it is bound to the given index in the given space,
+    and if the identifier is `undefined`, nothing happens. If the identifier
+    is already bound (in the given indexspace), then an exception is raised.
+    Otherwise, the function always returns `undefined`. */
 
     if (node === undefined) return;
 
-    const [indexspace, identifier] = [INDEXSPACES.identifiers[type], node.value];
+    const indexspace = INDEXSPACES.identifiers[type];
+    const identifier = node.value;
 
     if (indexspace[identifier] === undefined) indexspace[identifier] = index;
     else throw new DuplicateIdentifierError(node);
 
-    SECTIONS[0].append(type, identifier, index); // update the custom name section
+    SECTIONS[0].append(type, identifier, index); // update the name section
 };
 
 const resolveIdentifier = function(type, identifier) {
 
-    /* This helper takes a indexspace name and an identifier, and then returns the
-    corresponding index, or throws an exception if the identifer is not registered
-    in the given indexspace. */
+    /* This helper takes a indexspace name and an identifier, and then returns
+    the corresponding index, or throws an exception if the identifer is not
+    registered in the given indexspace. */
 
     const index = INDEXSPACES.identifiers[type][identifier.value];
 
-    if (index === undefined) throw new UnboundIdentifierError(type, identifier);
-    else return index;
+    if (index === undefined) {
+
+        throw new UnboundIdentifierError(type, identifier);
+
+    } else return index;
 };
 
 const resolveIdentity = function(type, identity) {
 
-    /* This helper takes a type and an identity (either a number literal or
-    an identifier), and returns the expressed index (as a `Number`). */
+    /* This helper takes a indecspace name (`type`) and an identity (an index
+    or identifier). It returns the expressed index. */
 
     if (identity instanceof NumberLiteral) {
 
@@ -2128,21 +2149,10 @@ const resolveIdentity = function(type, identity) {
 
 const reset = function(configuration) {
 
-    /* This is the generic reset helper for this module. It resets
-    the compiler state, ready for a new source. */
+    /* This is the generic reset helper for this module. It resets the
+    compiler state, ready for a new source file to be compiled. */
 
     [SOURCE, URL] = [configuration.source, configuration.url];
-
-    INDEXSPACES = {
-        components: {
-            register: [], function: [], type: [],
-            memory: [], table: [], memorybank: [], tablebank: [],
-        },
-        identifiers: {
-            register: {}, function: {}, type: {},
-            memory: {}, table: {}, memorybank: {}, tablebank: {},
-        }
-    };
 
     SECTIONS = [
         new NameSection(0),
@@ -2159,6 +2169,18 @@ const reset = function(configuration) {
         new DataSection(11),
         new DataCountSection(12)
     ];
+
+    INDEXSPACES = {};
+
+    INDEXSPACES.components = {
+        register: [], function: [], type: [],
+        memory: [], table: [], memorybank: [], tablebank: [],
+    };
+
+    INDEXSPACES.identifiers = {
+        register: {}, function: {}, type: {},
+        memory: {}, table: {}, memorybank: {}, tablebank: {},
+    };
 };
 
 // numeric helper functions...
@@ -2166,8 +2188,8 @@ const reset = function(configuration) {
 const ULEB128 = stack(function(push, pop, input) {
 
     /* This stack function takes an positive integer as a BigInt, an integer
-    Number or a NumberLiteral token instance, encodes it using Unsigned LEB128,
-    pushing each byte to the resulting array as a Number. */
+    Number or a NumberLiteral token instance, encodes it using the Unsigned
+    LEB128 encoding, pushing each byte to the resulting array as a Number. */
 
     if (input instanceof NumberLiteral) input = evaluateLiteral(input, true);
     else input = BigInt(input);
@@ -2186,8 +2208,9 @@ const ULEB128 = stack(function(push, pop, input) {
 const SLEB128 = stack(function(push, pop, input) {
 
     /* This stack function takes an integer (positive or negative) as a BigInt,
-    and integer Number or a NumberLiteral token instance, and encodes it using
-    Signed LEB128, pushing each byte to the resulting array as a Number. */
+    an integer `Number` or a `NumberLiteral` instance, and encodes it using
+    the Signed LEB128 encoding, pushing each byte to the resulting array
+    as a `Number`. */
 
     const zero = () => input === 0n && (byte & 0x40n) === 0n;
     const ones = () => input === -1n && (byte & 0x40n) !== 0n;
@@ -2209,9 +2232,10 @@ const SLEB128 = stack(function(push, pop, input) {
 
 const IEEE754 = stack(function(push, pop, width, input) {
 
-    /* This stack function takes a width (either `32` or `64`) and any Number or
-    NumberLiteral instance, and encodes it as an IEEE floating point number of the
-    given width, pushing each byte to the resulting array as a Number. */
+    /* This stack function takes a width (either `32` or `64`) and any `Number`
+    or `NumberLiteral` instance, and encodes it using the IEEE floating point
+    encoding for the given width, pushing each byte to the resulting array
+    as a `Number`. */
 
     if (input instanceof NumberLiteral) input = evaluateLiteral(input, false);
 
@@ -2222,7 +2246,7 @@ const IEEE754 = stack(function(push, pop, width, input) {
     for (const byte of bytes) push(byte);
 });
 
-// the compiler entrypoint...
+/* --{ THE COMPILER ENTRYPOINT }-------------------------------------------- */
 
 export const compile = function * (configuration) {
 
@@ -2243,19 +2267,21 @@ export const compile = function * (configuration) {
         else if (statement instanceof ExportStatement) exports.push(statement);
         else {
 
-            if (component.name === "type") {
+            const name = component.name;
 
-                component.index = registerComponent("type", component, true);
+            if (name === "type") {
+
+                component.index = registerComponent(name, component, true);
                 SECTIONS[1].append(statement);
 
-            } else if (component.name === "memorybank") {
+            } else if (name === "memorybank") {
 
-                component.index = registerComponent("memorybank", component, true);
+                component.index = registerComponent(name, component, true);
                 new MemoryBankSegment(component.primer);
 
-            } else if (component.name === "tablebank") {
+            } else if (name === "tablebank") {
 
-                component.index = registerComponent("tablebank", component, true);
+                component.index = registerComponent(name, component, true);
                 new TableBankSegment(component.primer);
 
             } else definitions.push(statement);
@@ -2277,13 +2303,14 @@ export const compile = function * (configuration) {
 
     for (const statement of definitions) {
 
-        const component = statement.component;
         const sectionIDs = {function: 3, table: 4, memory: 5, register: 6};
+        const component = statement.component;
+        const name = component.name;
 
-        if (component.name in sectionIDs) {
+        if (name in sectionIDs) {
 
-            component.index = registerComponent(component.name, component, true);
-            SECTIONS[sectionIDs[component.name]].append(statement);
+            component.index = registerComponent(name, component, true);
+            SECTIONS[sectionIDs[name]].append(statement);
         }
     }
 

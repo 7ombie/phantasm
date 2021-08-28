@@ -1,9 +1,11 @@
-/* --{ THE PHANTASM LEXER }--{ /static/lexer.js }--------------------------------------------------- **
+/* --{ THE PHANTASM LEXER }--{ /static/lexer.js }---------------------------------------------- /*
 
 This module implements the PHANTASM lexer, exporting a function named
-`lex` as an entrypoint.
+`lex` as an entrypoint. */
 
-/* --{ THE GLOBAL LEXER STATE }----------------------------------------------------------------- */
+import { not, iife, stack } from "/static/helpers.js";
+
+/* --{ THE GLOBAL LEXER STATE }---------------------------------------------------------------- */
 
 let URL;            // used to store the url for the source file
 let SOURCE;         // used to store the source string
@@ -354,30 +356,6 @@ export class ImplicitNumber extends NumberLiteral {
 }
 
 /* --{ THE GENERIC HELPER FUNCTIONS }----------------------------------------------------------- */
-
-export const put = console.log;
-export const not = value => ! value;
-export const iife = lambda => lambda();
-
-export const stack = function(lambda) {
-
-    /* This generic decorator automatically creates and returns a stack
-    each time the decorated function is invoked. The `lambda` function
-    gets `push` and `pop` helpers for accessing the stack prefixed to
-    any arguments that are passed to it directly. The stack itself
-    is bound to `this` inside the lambda.*/
-
-    return (...args) => {
-
-        const array = [];
-        const push = arg => array.push(arg);
-        const pop = () => array.pop();
-
-        lambda.call(array, push, pop, ...args);
-
-        return array;
-    };
-};
 
 export const format = function(string, ...args) {
 
