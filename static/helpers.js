@@ -1,3 +1,5 @@
+/* --{ THE HELPERS LIBRARY }--{ /static/helpers.js }------------------------ */
+
 export const put = console.log;
 
 export const not = value => ! value;
