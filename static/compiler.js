@@ -1845,7 +1845,8 @@ class DataSection extends VectorSection {
         /* This method is used as a callback (for passing to `pushVector`) that
         takes and encodes a memory element from a memory primer or memory bank
         segment. The resulting bytes are returned as an `Array` (so the array
-        can be flattened by the `pushVector` method). */
+        can be flattened by the `pushVector` method (typed arrays cannot be
+        flattened in the same way)). */
 
         const {type, value, length} = element;
 
@@ -2183,7 +2184,7 @@ const reset = function(configuration) {
     };
 };
 
-// numeric helper functions...
+/* --{ THE NUMERIC ENCODERS }----------------------------------------------- */
 
 const ULEB128 = stack(function(push, pop, input) {
 
@@ -2246,27 +2247,29 @@ const IEEE754 = stack(function(push, pop, width, input) {
     for (const byte of bytes) push(byte);
 });
 
-/* --{ THE COMPILER ENTRYPOINT }-------------------------------------------- */
+/* --{ THE COMPILER STAGES }------------------------------------------------ */
 
-export const compile = function * (configuration) {
+const stageZero = function(statements) {
 
-    // Stage Zero: Reset everything (so multiple modules can be compiled)...
-
-    reset(configuration);
-
-    // Stage One: divide statements by type, handling type and bank definitions
-    // immediately, sorting everything else into arrays for the next stages...
+    /* This helper implements Stage One of the compiler. It takes an instance
+    of the `parse` generator, which it iterates over to access the statements
+    of the current module. It sorts the statements into three arrays, one for
+    definitions, one for imports and a third for exports, though type, memory
+    bank and table bank definitions are handled immediately (not pushed to an
+    array). The helper returns an array containing the three statement arrays,
+    in the order: imports, definitions, exports. */
 
     const [imports, definitions, exports] = [[], [], []];
 
-    for (const statement of parse(configuration)) {
+    for (const statement of statements) {
 
-        const component = statement.component;
+        const is = Class => statement instanceof Class;
 
-        if (statement instanceof ImportStatement) imports.push(statement);
-        else if (statement instanceof ExportStatement) exports.push(statement);
+        if (is(ImportStatement)) imports.push(statement);
+        else if (is(ExportStatement)) exports.push(statement);
         else {
 
+            const component = statement.component;
             const name = component.name;
 
             if (name === "type") {
@@ -2288,7 +2291,14 @@ export const compile = function * (configuration) {
         }
     }
 
-    // Stage Two: Handle all of the import statements...
+    return [imports, definitions, exports];
+};
+
+const stageOne = function(imports) {
+
+    /* This helper implements Stage Two, which handles all of the import
+    statements. It takes an array of import statements, compiles them and
+    returns `undefined`. */
 
     for (const statement of imports) {
 
@@ -2297,13 +2307,18 @@ export const compile = function * (configuration) {
         component.index = registerComponent(component.name, component, true);
         SECTIONS[2].append(statement);
     }
+};
 
-    // Stage Three: Handle the remaining define statements (types and banks
-    // have already been dealt with)...
+const stageTwo = function(definitions) {
+
+    /* This helper implements Stage Three, which handles all of the define
+    statements. It takes an array of (the remaining) define statements, and
+    compiles them, before returning `undefined`. */
+
+    const sectionIDs = {function: 3, table: 4, memory: 5, register: 6};
 
     for (const statement of definitions) {
 
-        const sectionIDs = {function: 3, table: 4, memory: 5, register: 6};
         const component = statement.component;
         const name = component.name;
 
@@ -2313,12 +2328,31 @@ export const compile = function * (configuration) {
             SECTIONS[sectionIDs[name]].append(statement);
         }
     }
+};
 
-    // Stage Four: Handle any export statements...
+const stageThree = function(exports) {
+
+    /* This helper implements Stage Four, which handles all of the export
+    statements. It takes an array of export statements, and compiles them,
+    before returning `undefined`. */
 
     for (const statement of exports) SECTIONS[7].append(statement);
+};
 
-    // Stage Five: Compile the module and yield the result (bytewise)...
+/* --{ THE COMPILER ENTRYPOINT }-------------------------------------------- */
+
+export const compile = function * (configuration) {
+
+    /* This is the entrypoint generator for the compiler, and generally for
+    the assembler as a pipeline. It takes a configuration hash, and yields
+    the given module bytewise, or throws a syntax error, if the source is
+    invalid. */
+
+    reset(configuration);
+
+    const [imports, definitions, exports] = stageZero(parse(configuration));
+
+    stageOne(imports); stageTwo(definitions); stageThree(exports);
 
     yield * header;
 
