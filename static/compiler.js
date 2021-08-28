@@ -1,4 +1,4 @@
-/* --{ THE PHANTASM COMPILER  }--{ /static/compiler.js }--------------------- *
+/* --{ THE PHANTASM COMPILER }--{ /static/compiler.js }--------------------- *
 
 This module implements the PHANTASM compiler, exporting a function named
 `compile` as an entrypoint. */

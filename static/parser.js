@@ -1,4 +1,4 @@
-/* --{ THE PHANTASM PARSER  }--{ /static/parser.js }------------------------- *
+/* --{ THE PHANTASM PARSER }--{ /static/parser.js }-------------------------- *
 
 This module implements the PHANTASM parser, exporting a function named
 `parse` as an entrypoint. */
