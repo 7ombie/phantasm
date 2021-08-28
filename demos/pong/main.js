@@ -2,12 +2,13 @@
 
 import { put, not, iife, stack } from "/static/helpers.js";
 import compile from "/static/compiler.js";
+import WABT from "/demos/pong/wabt.js";
 
 
 
 
 
-const source = `
+let source = `
 define type $binop as i32, i32 -> i32
 define type $check as i64 -> i32
 define type $testtype as void -> void
@@ -23,7 +24,7 @@ import "start" as start function
 
 define variable i32 $n thus push i32 1
 define variable f32 $lowNumber as -22.123
-define constant i32 $lowerNumber as -2987
+define constant i32 $lowerNumber as 4\\9
 define constant pointer $pointer thus push pointer 3
 define constant proxy $proxy
 
@@ -303,6 +304,10 @@ export "table" as table
 
 `;
 
+source = `
+define constant i32 thus push -1
+define constant i32 thus push 3\\9
+`;
 
 const configuration = {
     source,
@@ -332,11 +337,21 @@ const options = {
     write_debug_names: true,
 };
 
-const binary = new Uint8Array(compile(configuration));
-put(binary)
+const imports = {
+    lib: {
+        func: (x, y) => x + y
+    },
+    host: {
+        global: new WebAssembly.Global({value: "i32", mutable: false}, 786),
+        int: new WebAssembly.Global({value: "i32", mutable: true}, 123)
+    }
+};
 
-// const instance = await WebAssembly.instantiate(binary, {
-//     lib: {func: (x, y) => x + y },
-//     system: {global: new WebAssembly.Global({value: "i32", mutable: false}, 786)},
-//     numbers: {int: new WebAssembly.Global({value: "i32", mutable: true}, 123)}
-// });
+const wabt = await new WABT();
+const binary = new Uint8Array(compile(configuration));
+const module = await wabt.readWasm(binary, features);
+
+put(binary);
+put(module.toText(options));
+
+const instance = await WebAssembly.instantiate(binary, imports);

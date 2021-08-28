@@ -1,4 +1,4 @@
-/* --{ THE PHANTASM PARSER  }--{ /static/parser.js }-------------------------------------------------- *
+/* --{ THE PHANTASM PARSER  }--{ /static/parser.js }------------------------- *
 
 This module implements the PHANTASM parser, exporting a function named
 `parse` as an entrypoint. */
@@ -13,31 +13,33 @@ import {
     Terminator, Comma, NumberLiteral, ImplicitNumber
 } from "/static/lexer.js";
 
-/* --{ THE GLOBAL PARSER STATE }---------------------------------------------------------------- */
+/* --{ THE GLOBAL PARSER STATE }-------------------------------------------- /*
 
-/* This state is initialized by the `parse` function (at the end of the file)
-every time that function is invoked to parse another file. They are global, as
-they are referenced and often updated by various helper functions. */
+This state is initialized by the `parse` function (at the end of the file)
+every time that function is invoked to parse another file. They are global,
+as they are referenced (and mutated) by various helper functions. */
 
-let URL;                    // the source file
-let TOKENS;                 // the token generator
-let CURRENT_TOKEN;          // the current `Token` instance
-let NEXT_TOKEN;             // the next `Token` instance
-let FUTURE_TOKEN;           // the `Token` instance after the next `Token` instance
-let GLOBAL_CONTEXT;         // tracks whether the context is global or not (local)
-let START;                  // tracks whether a start function has been defined yet
+let URL;             // the source file
+let TOKENS;          // the token generator
+let CURRENT_TOKEN;   // the current `Token` instance
+let NEXT_TOKEN;      // the next `Token` instance
+let FUTURE_TOKEN;    // the `Token` instance after the next `Token` instance
+let GLOBAL_CONTEXT;  // tracks whether the context is global or not (local)
+let START;           // tracks whether a start function has been defined yet
 
-/* --{ USEFUL STRING CONSTANTS }---------------------------------------------------------------- */
+/* --{ USEFUL STRING CONSTANTS }-------------------------------------------- */
 
 const [u8, s8, i8] = ["u8", "s8", "i8"];
 const [u16, s16, i16] = ["u16", "s16", "i16"];
 const [u32, s32, i32] = ["u32", "s32", "i32"];
 const [u64, s64, i64] = ["u64", "s64", "i64"];
 const [f32, f64, utf8] = ["f32", "f64", "utf8"];
-const [shared, pointer, proxy, mixed] = ["shared", "pointer", "proxy", "mixed"];
-const [global, local, left, right, atomic] = ["global", "local", "left", "right", "atomic"];
 
-/* --{ THE PARSER ERROR CLASSES }--------------------------------------------------------------- */
+const [shared, atomic] = ["shared", "atomic"];
+const [pointer, proxy, mixed] = ["pointer", "proxy", "mixed"];
+const [global, local, left, right] = ["global", "local", "left", "right"];
+
+/* --{ THE PARSER ERROR CLASSES }------------------------------------------- */
 
 class ParserError extends PhantasmError {
 
@@ -76,8 +78,10 @@ class UnexpectedTokenError extends ParserError {
 
     constructor(expected, token) {
 
-        /* The `expected` argument is a string describing the expected token classes
-        (for example "NumberLiteral or StringLiteral" or "reftype"). */
+        /* The `expected` argument is a string describing the expected token
+        classes, separated by the word *or* when there is more than one (for
+        example "Reftype", "NumberLiteral or StringLiteral" etc), which must
+        be created by the caller (in practice, the `require` helper). */
 
         super(format("Expected {0.s}, but found {1.f}.", expected, token));
     }
@@ -100,7 +104,7 @@ class ScopeError extends ParserError {
 
 class MultipleStartFunctionsError extends ParserError {
 
-    /* Thrown when the user attempts to define more than one start function. */
+    /* Thrown when the user attempts to define multiple start functions. */
 
     constructor(location) {
 
@@ -113,8 +117,8 @@ class MultipleStartFunctionsError extends ParserError {
 
 class UnrecognizedStatementError extends ParserError {
 
-    /* Thrown when a statement begins with a keyword, but it is not
-    a primary keyword (one used to begin a statement). */
+    /* Thrown when a statement begins with a keyword that is not a primary
+    keyword (one used to begin a statement). */
 
     constructor() {
 
@@ -126,14 +130,13 @@ class UnrecognizedStatementError extends ParserError {
 
 class SuperfluousTokenError extends ParserError {
 
-    /* Thrown when a statement has been fully parsed, but there are
-    still one or more tokens on the end of the line (instead of the
-    expected terminator). */
+    /* Thrown when a statement has been fully parsed, but there are still one
+    or more tokens on the line (instead of the expected terminator). */
 
     constructor(node) {
 
-        /* The `node` argument is the token that was found where the
-        terminator should have been. */
+        /* The `node` argument is the token that was found where a terminator
+        was required. */
 
         const template = "Statement complete, but line continues with {0.f}.";
 
@@ -143,8 +146,8 @@ class SuperfluousTokenError extends ParserError {
 
 class ProxyInitializerError extends ParserError {
 
-    /* Thrown when a proxy register uses `as` to quickly define its init-
-    ializer (which only makes sense for pointer and numtype registers). */
+    /* Thrown when a proxy register definition uses the as-shorthand (which is
+    only valid for pointer and numtype registers). */
 
     constructor() {
 
@@ -155,25 +158,25 @@ class ProxyInitializerError extends ParserError {
 class ProxyReferenceError extends ParserError {
 
     /* Thrown when an instruction (in practice, `push`) tries to dereference
-    a `proxy`. In PHANTASM, `push pointer $f` is equivalent to `ref.func $f` in
-    WAT, while `push proxy $p` is just invalid. */
+    a `proxy`. In PHANTASM, `push pointer $f` is equivalent to `ref.func $f`
+    in WAT, while `push proxy $p` is just invalid. */
 
     constructor() {
 
-        super("Cannot dereference proxies (only pointers).");
+        super("Cannot dereference a proxy (only pointers).");
     }
 }
 
 class InvalidTestError extends ParserError {
 
     /* Thrown when an is-instruction or not-instruction specifies a test
-    which is not valid (in the example `is zero i32`, the specified test
-    is `zero`, which would be a valid test for the is-instruction). */
+    which is not valid (for example, `not zero i32` specifies the `zero`
+    test, which is only supported by the is-instruction). */
 
     constructor(instruction) {
 
-        /* The `instruction` argument is the instance of `IS` or `NOT`
-        that was being constructed when the invalid test was found. */
+        /* The `instruction` argument is the instance of `IS` or `NOT` that
+        includes the invalid test. */
 
         const name = nameInstruction(instruction, true);
 
@@ -183,16 +186,19 @@ class InvalidTestError extends ParserError {
 
 class InvalidPrimitiveError extends ParserError {
 
-    /* Thrown when a primitive type is expected and found, but the found
-    primitive is of the wrong type. */
+    /* Thrown when a primitive type is expected and found, but it is the
+    wrong type of primitive. */
 
     constructor(description, node) {
 
         /* The `description` argument is a string that describes the type
-        that was expected (something like "a sign-agnostic integer"). The
-        `node` argument is the invalid primitive token. */
+        that was expected (something like "a sign-agnostic integer") that
+        must be constructed by the caller. The `node` argument is the
+        invalid primitive token. */
 
-        super(format("Expected {0.s} type, not {1.V}.", description, node.type));
+        const template = "Expected {0.s} type, not {1.V}.";
+
+        super(format(template, description, node.type));
         this.location = node.type.location;
     }
 }
@@ -228,14 +234,14 @@ class UnexpectedKeywordError extends ParserError {
 
 class ExpectedComponentError extends ParserError {
 
-    /* Thrown when a component is required (as part of a specifier or definition),
-    and the token that is found cannot begin any valid component specifier. */
+    /* Thrown when a component is required (in a specifier or definition),
+    but no valid component specifier can begin with the token found. */
 
     constructor(description, node) {
 
-        /* The `description` argument is a string that describes the descriptor type
-        (one of "specifier" or "description"). The `node` argument is the token that
-        was found and invalidated. */
+        /* The `description` argument is the descriptor name, as a string
+        (one of "specifier" or "definition"). The `node` argument is the
+        offending token. */
 
         const template = "Expected a component {0.s}, not {1.f}.";
 
@@ -251,7 +257,8 @@ class AtomicInstructionError extends ParserError {
 
     constructor(operation) {
 
-        /* The `operation` argument is the `Operation` subclass instance. */
+        /* The `operation` argument is the offending `Operation` (actually a
+        instance of a subclass). */
 
         super(format("The {0.v}-instruction cannot be atomic.", operation));
     }
@@ -280,14 +287,14 @@ class ExpectedPrimitiveError extends ParserError {
 
 class UnexpectedPrimitiveError extends ParserError {
 
-    /* Thrown when a primitive token is expected and found, but it is not one of
-    the expected primitive types. */
+    /* Thrown when a primitive token is expected and found, but it is not one
+    of the expected primitive types. */
 
     constructor(description, token) {
 
-        /* The `description` argument is a string that describes the expected types
-        (for example, "a sign-agnostic integer"). The `token` argument is the un-
-        expected type of primitive token. */
+        /* The `description` argument is a string that describes the expected
+        types (for example, "a sign-agnostic integer"). The `token` argument
+        is the unexpected `Primitive` instance. */
 
         super(format("Expected {0.s} type, not {1.V}.", description, token));
     }
@@ -295,32 +302,33 @@ class UnexpectedPrimitiveError extends ParserError {
 
 class InvalidRegisterNameError extends ParserError {
 
-    /* Thrown when a component name is required and a `Component` is found, but it
-    is a register name that is not valid in the context (using `variable` in a
-    reference etc). */
+    /* Thrown when a component name is required and a `Component` is found,
+    but it is a register name that is not valid, given the context (using
+    `variable` or `constant` in a reference, or using `register` in a
+    specifier of definition). */
 
     constructor(reference, token) {
 
-        /* The `reference` argument is a bool. It indicates whether a reference was
-        expected (truthy) or a specifier or definition (falsey) instead. The `token`
-        argument is the token that was found. */
+        /* The `reference` argument is a bool that is `true` when a reference
+        was expected, and `false` when a specifier or definition was expected.
+        The `token` argument is the token that was actually found. */
 
-        const description = reference ? "`register`" : "`constant` or `variable`";
+        const expected = reference ? "`register`" : "`constant` or `variable`";
 
-        super(format("Expected {0.s}, found {1.V}.", description, token));
+        super(format("Expected {0.s}, found {1.V}.", expected, token));
     }
 }
 
 class ConstantIntegerError extends ParserError {
 
-    /* Thrown when an integer is required, but the given literal uses a named constant
-    (`Infinity`, `NaN` etc) that can only be expressed as a float. */
+    /* Thrown when an integer is required, but the given literal uses a named
+    constant (`Infinity`, `NaN` etc) that can only be expressed as a float. */
 
     constructor(token) {
 
         /* The `token` argument is the invalid number literal token. */
 
-        const template = "Cannot express an integer with the float-constant {0.V}.";
+        const template = "Constants (like {0.V}) cannot express integers.";
 
         super(format(template, token));
     }
@@ -328,12 +336,13 @@ class ConstantIntegerError extends ParserError {
 
 class MislabelledExitError extends ParserError {
 
-    /* Thrown when an exit-instruction is found with an unexpected token type where
-    the first label was expected. */
+    /* Thrown when an exit-instruction is found with an unexpected token type
+    where the first label was expected. */
 
     constructor() {
 
-        const ending = at(Terminator, Indentation) ? "." : format(", not {0.f}.", advance());
+        const ended = at(Terminator, Indentation);
+        const ending = ended ? "." : format(", not {0.f}.", advance());
 
         super("The exit-instruction requires one or more labels" + ending);
     }
@@ -341,8 +350,8 @@ class MislabelledExitError extends ParserError {
 
 class InvertedLimitsError extends ParserError {
 
-    /* Thrown when a limits is provided with a maximum length before the initial
-    length is specified. */
+    /* Thrown when the maximum length of some limits `to <number-literal>` is
+    given before the initial length `with <number-literal>` is specified. */
 
     constructor() {
 
@@ -352,7 +361,8 @@ class InvertedLimitsError extends ParserError {
 
 class InvalidTableQualifierError extends ParserError {
 
-    /* Thrown when a table is specified or defined with an invalid qualifier. */
+    /* Thrown when a table is specified (or defined) with an invalid
+    qualifier. */
 
     constructor(qualifier) {
 
@@ -364,12 +374,13 @@ class InvalidTableQualifierError extends ParserError {
 
 class UnexpectedComponentError extends ParserError {
 
-    /* Thrown when specific component was expected but another was found. */
+    /* Thrown when one or more components were expected, but a different
+    component was found. */
 
     constructor(names) {
 
-        /* The `names` argument is an array of strings that sets out the names
-        that the expected component was meant to belong to. */
+        /* The `names` argument is an array of strings that sets out the
+        names of the expected components. */
 
         const template = "Expected {0.s} component, found {1.v} instead.";
 
@@ -379,7 +390,8 @@ class UnexpectedComponentError extends ParserError {
 
 class ExpectedInlineBlockError extends ParserError {
 
-    /* Thrown when an inline-primer was expected, but the end of line was found. */
+    /* Thrown when an inline-block was expected (following `thus`), but the
+    end of line was found. */
 
     constructor() {
 
@@ -409,11 +421,11 @@ class SegmentedBankError extends ParserError {
 
 class BrokenDirectiveError extends ParserError {
 
-    /* Thrown when a directive is broken across multiple lines. */
+    /* Thrown when a directive is illegally broken across multiple lines. */
 
     constructor() {
 
-        super("Directives cannot span multiple (logical) lines.");
+        super("Directives are terminated by the end of the line.");
     }
 }
 
@@ -431,37 +443,26 @@ class EmptySegmentError extends ParserError {
 
         const options = token.location;
 
-        options.text = "Each primer segment must contain at least one element.";
+        options.text = "Primer segments must contain at least one element.";
         super(options);
     }
 }
 
 class ConstantError extends ParserError {
 
-    /* Thrown when an instruction is found within a constant block that is not
-    permitted there (as in WAT *constant expressions*). */
+    /* Thrown when an instruction is found within a constant expression that
+    is not constant. */
 
     constructor(instruction, description) {
 
-        /* The `instruction` argument is the offending instruction node, and the
-        `description` argument describes the issue, forming the beginning of a
-        sentence that ends with "not valid in a constant expression". */
+        /* The `instruction` argument is the offending instruction node, and
+        the `description` argument describes the issue, forming the beginning
+        of a sentence that ends with "not valid in a constant expression". */
 
         const options = instruction.location;
 
         options.text = `${description} not valid in a constant expression.`;
         super(options);
-    }
-}
-
-class MisqualifiedStartError extends ParserError {
-
-    /* Thrown when a start function is designated using `start <identifier>`,
-    when it should be `start function` or just `$start`. */
-
-    constructor() {
-
-        super("Cannot use `start` qualifier to bind an identifier.");
     }
 }
 
@@ -482,18 +483,7 @@ class UnexpectedPrimerError extends ParserError {
 
     constructor(qualifier) {
 
-        super(`Primers are only valid for pointer tables (not ${qualifier} tables).`);
-    }
-}
-
-class TypedTableError extends ParserError {
-
-    /* Thrown when a table with a specific type (not `mixed`) contains an
-    element that also specifies its own type. */
-
-    constructor() {
-
-        super("Only mixed tables can specify element types.");
+        super(`Only pointer (not ${qualifier}) tables can use primers.`);
     }
 }
 
@@ -504,7 +494,7 @@ class MisqualifiedBankError extends ParserError {
 
     constructor(qualifier) {
 
-        /* The `qualifier` argument is the offending qualifier (as a string). */
+        /* The `qualifier` argument is the offending qualifier, as a string. */
 
         const template = "The Spec does not (currently) support {0.s} banks.";
 
@@ -524,12 +514,20 @@ class UnexpectedElseError extends ParserError {
 
 class BoundsError extends ParserError {
 
-    /* Thrown on an integer that is below its expected range. */
+    /* Thrown on an integer that is outside its expected range. */
 
-    constructor(literal, direction, signed, width) {
+    constructor(literal, direction, width, signed) {
 
-        const type = (signed ? "a signed" : "an unsigned") + " " + width + "-bit";
-        const template = `The value {0.V} is too ${direction} (for ${type} integer).`;
+        /* The `literal` argument is the offending `NumberLiteral` instance.
+        The `direction` argument (a string) describes the number as too "high"
+        or "low". The `width` argument is the expected width of the integer (8,
+        16, 32 or 64), and the `signed` argument is a bool that is `true` for
+        signed integers, and `false` for unsigned. */
+
+        const bits = " " + width + "-bit ";
+        const type = (signed ? "a signed" : "an unsigned") + bits + "integer";
+
+        const template = `The value {0.V} is too ${direction} (for ${type}).`;
 
         super(format(template, literal, signed ? "signed" : "unsigned"));
     }
@@ -1119,14 +1117,17 @@ export class RegisterDefinition extends ComponentDefinition {
             } else {
 
                 const number = require(NumberLiteral);
+                const type = this.type.value;
 
-                if (evaluate(this.type, "i32")) boundscheck(number, 32, true);
-                else if (evaluate(this.type, "i64")) boundscheck(number, 64, true);
+                if (type === i32) boundscheck(number, 32, null);
+                else if (type === i64) boundscheck(number, 64, null);
 
                 this.block.push(number);
             }
 
-        } else at(Terminator) ? this.block.push(this.type) : requireBlock(this, true);
+        }
+        else if (at(Terminator)) this.block.push(this.type)
+        else requireBlock(this, true);
     }
 }
 
@@ -1616,15 +1617,15 @@ instructions.push = class PUSH extends Instruction {
 
         } else { // push number...
 
-            if (this.target = accept(NumberLiteral)) this.name = "i32";
+            if (this.target = accept(NumberLiteral)) this.name = i32;
             else {
 
                 this.name = requireNumtype().value;
                 this.target = accept(NumberLiteral);
             }
 
-            if (this.name === i32) boundscheck(this.target);
-            else if (this.name === i64) boundscheck(this.target, 64);
+            if (this.name === i32) boundscheck(this.target, 32, null);
+            else if (this.name === i64) boundscheck(this.target, 64, null);
         }
 
         return true; // `push` is always valid in a constant expression
@@ -1971,23 +1972,36 @@ const typecheck = function(token, ...types) {
 
 const boundscheck = function(identity, width=32, signed=false) {
 
-    /* This helper takes an identity, a width (either `32` or `64`, and defaulting
-    to `32`) and a bool that determines whether the number is signed or not (which
-    defaults to `false`). If the identity is not a NumberLiteral, it is returned
-    immediately. Otherwise, it is checked using the bool and width to define its
-    range. It is assumed to be an integer (floats just go to infinity). If the
-    value is in range, the original identity token is returned, else an error
-    is raised. */
+    /* This helper takes an `identity` token, a `width` as a `Number` (which
+    can be any valid width, and defaults to `32`) and a ternary named `signed`
+    that is `true` for signed integers, `false` for unsigned, and `null` when
+    the integer is sign-agnostic, defaulting to `false`. If `identity` is not
+    a NumberLiteral, it is returned immediately. Otherwise, it is converted to
+    a `BigInt`, then validated, using the arguments to define its range. It is
+    assumed that `identity` is an integer (if it is a `NumberLiteral` at all),
+    as floats just go to infinity, so are not boundschecked by the caller. If
+    the value is in range, the original `identity` argument is returned, else
+    an exception is raised. */
 
-    if (identity instanceof Identifier || identity === undefined) return identity;
+    if (identity instanceof Identifier) return identity;
+    if (identity === undefined) return identity;
+
+    let lower, upper;
 
     const e = 2n ** BigInt(width);
     const number = evaluateLiteral(identity, true);
-    const [lower, upper] = signed ? [0n - e >> 1n, -1n + e >> 1n] : [0n, e - 1n];
 
-    if (number < lower) throw new BoundsError(identity, "low", signed, width);
-    else if (number > upper) throw new BoundsError(identity, "high", signed, width);
-    else return identity;
+    if (signed === true) [lower, upper] = [0n - e >> 1n, -1n + e >> 1n];
+    else if (signed === false) [lower, upper] = [0n, e - 1n];
+    else [lower, upper] = [0n - e >> 1n, e - 1n];
+
+    if (number < lower || number > upper) {
+
+        const issue = number < lower  ? "low" : "high";
+
+        throw new BoundsError(identity, issue, width, signed);
+
+    } else return identity;
 };
 
 const evaluate = function(token, ...values) {

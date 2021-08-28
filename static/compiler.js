@@ -226,7 +226,7 @@ class Segment {
 
         Note: This method is not used by banks (only primer segments). */
 
-        const i32 = n => [opcodes.const.i32, ...SLEB128(n), encodings.end];
+        const i32 = n => [opcodes.const.i32, ...SLEB128(n, 32), encodings.end];
 
         if (this.explicit) {
 
@@ -756,8 +756,9 @@ class GlobalSection extends VectorSection {
         register type and implied instruction). */
 
         const encoders = {
-            i32: SLEB128, i64: SLEB128, pointer: ULEB128,
-            f32: n => IEEE754(32, n), f64: n => IEEE754(64, n)
+            i32: n => SLEB128(n, 32), i64: n => SLEB128(n, 64),
+            f32: n => IEEE754(n, 32), f64: n => IEEE754(n, 64),
+            pointer: ULEB128,
         };
 
         const instruction = component.block[0];
@@ -981,7 +982,7 @@ class CodeSection extends VectorSection {
 
         if (type instanceof Void) yield 0x40;
         else if (type instanceof Primitive) yield encodings[type.value];
-        else yield * SLEB128(SECTIONS[1].resolveType(instruction));
+        else yield * SLEB128(SECTIONS[1].resolveType(instruction), 33);
 
         yield * SECTIONS[10].encodeExpression(instruction.block);
 
@@ -1055,8 +1056,9 @@ class CodeSection extends VectorSection {
                                          // <numtype>.const <number-literal>
             yield opcodes.const[name];
 
-            if (["i32", "i64"].includes(name)) yield * SLEB128(target);
-            else yield * IEEE754("f32" === name ? 32 : 64, target);
+            if (name === "i32") yield * SLEB128(target, 32);
+            else if (name === "i64") yield * SLEB128(target, 64);
+            else yield * IEEE754(target, "f32" === name ? 32 : 64);
         }
     }
 
@@ -2206,12 +2208,15 @@ const ULEB128 = stack(function(push, pop, input) {
     }
 });
 
-const SLEB128 = stack(function(push, pop, input) {
+const SLEB128 = stack(function(push, pop, input, agnostic=undefined) {
 
-    /* This stack function takes an integer (positive or negative) as a BigInt,
-    an integer `Number` or a `NumberLiteral` instance, and encodes it using
-    the Signed LEB128 encoding, pushing each byte to the resulting array
-    as a `Number`. */
+    /* This stack function takes an integer `Number` or `NumberLiteral`, and
+    encodes it using the Signed LEB128 encoding, pushing each byte to the re-
+    sulting array as a `Number`. The function also takes an optional argument,
+    which is normally left `undefined` and ignored, but it can be set to `32`,
+    `33` or `64` (as a `Number`) to indicate the width, which allows agnostic
+    integers that are in range, but too high for the signed encoding, to be
+    converted to their negative equivalents automatically. */
 
     const zero = () => input === 0n && (byte & 0x40n) === 0n;
     const ones = () => input === -1n && (byte & 0x40n) !== 0n;
@@ -2220,6 +2225,14 @@ const SLEB128 = stack(function(push, pop, input) {
 
     if (input instanceof NumberLiteral) input = evaluateLiteral(input, true);
     else input = BigInt(input);
+
+    if (agnostic) {
+
+        const upperbound = 2n ** BigInt(agnostic);
+        const decremented = BigInt(agnostic) - 1n;
+
+        if (input >= 2n ** decremented) input -= upperbound;
+    }
 
     while (true) {
 
@@ -2231,7 +2244,7 @@ const SLEB128 = stack(function(push, pop, input) {
     }
 });
 
-const IEEE754 = stack(function(push, pop, width, input) {
+const IEEE754 = stack(function(push, pop, input, width) {
 
     /* This stack function takes a width (either `32` or `64`) and any `Number`
     or `NumberLiteral` instance, and encodes it using the IEEE floating point
