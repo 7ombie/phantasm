@@ -1628,15 +1628,17 @@ instructions.store = class STORE extends MemoryInstruction {
 
 instructions.push = class PUSH extends Instruction {
 
-    /* This class implements the `push` mnemonic, which has four forms:
+    /* This class implements the `push` mnemonic, which takes an optional
+    valtype, defaulting to `i32`, followed by an immediate value that is
+    approriate for the given valtype. This implements the WAT `ref.null`
+    and `ref.func` instructions, as well as the various `const`s:
 
-        push null <reftype>                 ref.null <reftype>
-        push pointer <function-identity>    ref.func <function-identity>
-        push <numtype> <number-literal>     <numtype>.const <number-literal>
         push <number-literal>               i32.const <number-literal>
+        push <numtype> <number-literal>     <numtype>.const <number-literal>
+        push pointer <identity>             ref.func <identity>
+        push <reftype> null                 ref.null <reftype>
 
-    All four forms are valid in a constant expression (engine support for
-    the Extended Constant Expressions Proposal is not required). */
+    Note: All `push` instructions are valid in a constant expression. */
 
     parse() {
 
