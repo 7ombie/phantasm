@@ -155,18 +155,6 @@ class ProxyInitializerError extends ParserError {
     }
 }
 
-class ProxyReferenceError extends ParserError {
-
-    /* Thrown when an instruction (in practice, `push`) tries to dereference
-    a `proxy`. In PHANTASM, `push pointer $f` is equivalent to `ref.func $f`
-    in WAT, while `push proxy $p` is just invalid. */
-
-    constructor() {
-
-        super("Cannot dereference a proxy (only pointers).");
-    }
-}
-
 class InvalidTestError extends ParserError {
 
     /* Thrown when an is-instruction or not-instruction specifies a test
@@ -1642,27 +1630,24 @@ instructions.push = class PUSH extends Instruction {
 
     parse() {
 
-        if (acceptKeyword("null")) { // push null...
+        if (acceptReftype()) { // push <reftype>...
 
             this.name = CURRENT_TOKEN.value;
-            this.target = requireReftype();
 
-        } else if (acceptReftype()) { // push pointer...
+            if (this.name === pointer) {
 
-            if (evaluate(CURRENT_TOKEN, pointer)) {
+                if (this.target = acceptKeyword("null")) /* done */;
+                else this.target = boundscheck(require(Identity));
 
-                this.name = CURRENT_TOKEN.value;
-                this.target = boundscheck(require(Identity));
+            } else this.target = requireKeyword("null");
 
-            } else throw new ProxyReferenceError();
-
-        } else { // push number...
+        } else { // push [<numtype>]...
 
             if (this.target = accept(NumberLiteral)) this.name = i32;
             else {
 
                 this.name = requireNumtype().value;
-                this.target = accept(NumberLiteral);
+                this.target = require(NumberLiteral);
             }
 
             if (this.name === i32) boundscheck(this.target, 32, null);

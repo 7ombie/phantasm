@@ -6,8 +6,8 @@ This module implements the PHANTASM compiler, exporting a function named
 import { not, iife, stack } from "/static/helpers.js";
 
 import {
-    format, encodeUTF8, Identifier, NumberLiteral, PhantasmError, Node,
-    Primitive, Void
+    format, encodeUTF8, Node, Identifier, Keyword, NumberLiteral,
+    Primitive, Void, PhantasmError
 } from "./lexer.js";
 
 import {
@@ -1040,20 +1040,22 @@ class CodeSection extends VectorSection {
         /* The compiler for the `push` mnemonic, which is used for the WAT
         instructions `const`, `ref.func` and `ref.null`. */
 
+        console.log(instruction);
+
         const {target, name} = instruction;
 
-        if (name === "null") {           // push null <reftype>
-                                         // ref.null <reftype>
-            yield opcodes.ref.null;
-            yield encodings[target.value];
+        if (target instanceof Keyword) { // push <reftype> null...
 
-        } else if (name === "pointer") { // push pointer <function>
-                                         // ref.func <function>
+            yield opcodes.ref.null;
+            yield encodings[name];
+
+        } else if (name === "pointer") { // push pointer <identity>...
+
             yield opcodes.ref.func;
             yield new Identity("function", target);
 
-        } else {                         // push [<numtype>] <number-literal>
-                                         // <numtype>.const <number-literal>
+        } else { // push [<numtype>] <number-literal>...
+
             yield opcodes.const[name];
 
             if (name === "i32") yield * SLEB128(target, 32);
