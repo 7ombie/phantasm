@@ -1827,16 +1827,17 @@ instructions.cast = class CAST extends Instruction {
 instructions.expand = class EXPAND extends Instruction {
 
     /* This class implements the `expand` mnemonic, which covers those WAT
-    `extend` instructions that have the same param and result type, expanding
-    some number of the LSBs by populating the MSBs with ones or zeros. */
+    `extend` instructions that have the same param and result type. These
+    instructions sign-extend the lower bytes of the operand into the upper
+    bytes. */
 
     parse() {
 
-        this.type = requireIntegerNumtype();
-        requireKeyword("as");
+        this.datatype = requireSignedDatatype();
+        requireKeyword("to");
 
-        if (this.type.value === i64) this.datatype = requireSignedDatatype();
-        else this.datatype = requireLesserSignedDatatype();
+        if (this.datatype.value === s32) this.type = requirePrimitiveType(i64);
+        else this.type = requireIntegerNumtype();
     }
 }
 
