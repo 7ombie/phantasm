@@ -24,12 +24,9 @@ There are also no users. It is just one guy, a grammar, an assembler, a
 tutorial and a few wiki entries, at this stage.
 
 Progress was steady for around six months, then I took a break from it
-for a few months (I was generally burnt out, then got distracted learning
+for a few months (I was a bit burnt out, then got distracted learning
 speedcubing). This pattern is pretty normal for me, though I usually
-take shorter breaks (a few weeks is typical).
-
-Ultimately, while I can only guess at how long things will take, I am
-absolutely committed to this project long-term.
+take shorter breaks (a few weeks).
 
 The current priorities are the DWARF implementation and the test suite.
 After that, the focus will shift to tools and editor support. The last
