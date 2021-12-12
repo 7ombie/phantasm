@@ -1,7 +1,7 @@
-/* This is a PHANTASM demo that implements a simple pong clone. */
+/* This is a test file. It is not part of the actual assembler. */
 
-import { put, not, iife, stack } from "/static/helpers.js";
-import compile from "/static/compiler.js";
+import { put, not, iife, stack } from "/assembler/helpers.js";
+import compile from "/assembler/compiler.js";
 import WABT from "/vendor/wabt.js";
 
 

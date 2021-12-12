@@ -1,9 +1,9 @@
-/* --{ THE PHANTASM LEXER }--{ /static/lexer.js }---------------------------- *
+/* --{ THE PHANTASM LEXER }--{ /assembler/lexer.js }------------------------- *
 
 This module implements the PHANTASM lexer, exporting a function named
 `lex` as an entrypoint. */
 
-import { not, iife, stack } from "/static/helpers.js";
+import { not, iife, stack } from "/assembler/helpers.js";
 
 /* --{ THE GLOBAL LEXER STATE }--------------------------------------------- */
 

@@ -1,14 +1,14 @@
-/* --{ THE PHANTASM COMPILER }--{ /static/compiler.js }---------------------- *
+/* --{ THE PHANTASM COMPILER }--{ /assembler/compiler.js }------------------- *
 
 This module implements the PHANTASM compiler, exporting a function named
 `compile` as an entrypoint. */
 
-import { not, iife, stack } from "/static/helpers.js";
+import { not, iife, stack } from "/assembler/helpers.js";
 
 import {
     format, encodeUTF8, Node, Identifier, Keyword, NumberLiteral,
     Primitive, Void, PhantasmError
-} from "./lexer.js";
+} from "/assembler/lexer.js";
 
 import {
     parse, evaluateLiteral,
@@ -19,7 +19,7 @@ import {
     RegisterReference, FunctionReference, MemoryReference, TableReference,
     RegisterSpecifier, FunctionSpecifier, MemorySpecifier, TableSpecifier,
     RegisterDefinition, FunctionDefinition, MemoryDefinition, TableDefinition
-} from "./parser.js";
+} from "/assembler/parser.js";
 
 /* --{ THE GLOBAL COMPILER STATE }------------------------------------------ */
 

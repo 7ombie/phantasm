@@ -1,9 +1,9 @@
-/* --{ THE PHANTASM PARSER }--{ /static/parser.js }-------------------------- *
+/* --{ THE PHANTASM PARSER }--{ /assembler/parser.js }----------------------- *
 
 This module implements the PHANTASM parser, exporting a function named
 `parse` as an entrypoint. */
 
-import { not, iife, stack } from "/static/helpers.js";
+import { not, iife, stack } from "/assembler/helpers.js";
 
 import {
     lex, format, encodeUTF8, PhantasmError, Node, Token, Component,
@@ -11,7 +11,7 @@ import {
     Identifier, Identity, normalizeNumberLiteral, EOF, Dedent, Delimiter,
     Operation, Indentation, Indent, StringLiteral, ImplicitString,
     Terminator, Comma, NumberLiteral, ImplicitNumber
-} from "/static/lexer.js";
+} from "/assembler/lexer.js";
 
 /* --{ THE GLOBAL PARSER STATE }-------------------------------------------- /*
 
