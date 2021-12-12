@@ -1040,8 +1040,6 @@ class CodeSection extends VectorSection {
         /* The compiler for the `push` mnemonic, which is used for the WAT
         instructions `const`, `ref.func` and `ref.null`. */
 
-        console.log(instruction);
-
         const {target, name} = instruction;
 
         if (target instanceof Keyword) { // push <reftype> null...

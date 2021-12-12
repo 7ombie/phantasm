@@ -345,7 +345,7 @@ const wabt = await new WABT();
 const binary = new Uint8Array(compile(configuration));
 const module = await wabt.readWasm(binary, features);
 
-put(binary);
+// put(binary);
 put(module.toText(options));
 
 //const instance = await WebAssembly.instantiate(binary, imports);
