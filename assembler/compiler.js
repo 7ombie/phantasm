@@ -2329,17 +2329,17 @@ const stageTwo = function(definitions) {
     statements. It takes an array of (the remaining) define statements, and
     compiles them, before returning `undefined`. */
 
-    const sectionIDs = {function: 3, table: 4, memory: 5, register: 6};
+    const sections = {function: 3, table: 4, memory: 5, register: 6};
 
     for (const statement of definitions) {
 
         const component = statement.component;
         const name = component.name;
 
-        if (name in sectionIDs) {
+        if (name in sections) {
 
             component.index = registerComponent(name, component, true);
-            SECTIONS[sectionIDs[name]].append(statement);
+            SECTIONS[sections[name]].append(statement);
         }
     }
 };
