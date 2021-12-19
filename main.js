@@ -228,10 +228,10 @@ define function of type 0
     convert s32 to f64, convert u32 to f64
     convert s64 to f64, convert u64 to f64
 
-    extend s32 to i64, extend u32 to i64
+    extend s32, extend u32
 
-    expand s8 to i32, expand s16 to i32
-    expand s8 to i64, expand s16 to i64, expand s32 to i64
+    expand i32 as s8, expand i32 as s16
+    expand i64 as s8, expand i64 as s16, expand i64 as s32
 
     atomic fence, atomic notify in 0 at 2
     atomic wait i32, atomic wait i64

@@ -1829,29 +1829,25 @@ instructions.expand = class EXPAND extends Instruction {
     /* This class implements the `expand` mnemonic, which covers those WAT
     `extend` instructions that have the same param and result type. These
     instructions sign-extend the lower bytes of the operand into the upper
-    bytes. */
+    bytes (see the `extend` mnemonic above). */
 
     parse() {
 
-        this.datatype = requireSignedDatatype();
-        requireKeyword("to");
+        this.type = requireIntegerNumtype();
+        requireKeyword("as");
 
-        if (this.datatype.value === s32) this.type = requirePrimitiveType(i64);
-        else this.type = requireIntegerNumtype();
+        if (this.type.value === i64) this.datatype = requireSignedDatatype();
+        else this.datatype = requireLesserSignedDatatype();
     }
 }
 
 instructions.extend = class EXTEND extends Instruction {
 
     /* This class implements the `extend` mnemonic, which covers those WAT
-    `extend` instructions that convert an `i32` to an `i64`. */
+    `extend` instructions that zero-extend or sign-extend an `i32` to an
+    `i64` (see the `expand` mnemonic above). */
 
-    parse() {
-
-        this.operand = requireGnosticWordType();
-        requireKeyword("to");
-        this.result = requirePrimitiveType(i64);
-    }
+    parse() { this.operand = requireGnosticWordType() }
 }
 
 instructions.atomic.fence = class ATOMIC_FENCE extends Instruction {}
