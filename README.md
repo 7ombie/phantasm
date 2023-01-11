@@ -3,6 +3,10 @@
 PHANTASM is an assembler that allows you to author WebAssembly modules in a
 nice, modern language, instead of repurposing the WebAssembly Text Format.
 
+**IMPORTANT**: While the design of the language went especially well, the
+implementation sucks, and needs redoing, now the design is finalized. This
+is basically an archive for now.
+
 The name *PHANTASM* is an acronym derived from a description of the language
 semantics: *Portable, Hardened, Asynchronous, Natively Typed, Abstract Stack*
 *Machine*. The name is also a description of the WebAssembly Engine, which
