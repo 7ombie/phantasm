@@ -44,12 +44,13 @@ const encodings = {
     type: 0x60, empty: 0x40, end: 0x0B
 };
 
-const sectionIDs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 10, 11, 0];
-
 const views = {
-    u8: Uint8Array, u16: Uint16Array, u32: Uint32Array,
-    u64: BigInt64Array, f32: Float32Array, f64: Float64Array,
+    u8: Uint8Array, u16: Uint16Array, u32: Uint32Array, u64: BigInt64Array,
+    f32: Float32Array, f64: Float64Array,
 };
+
+const sectionIDs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 10, 11, 0];
+const sectionMap = {type: 1, function: 3, table: 4, memory: 5, register: 6};
 
 /* --{ THE COMPILER ERROR CLASSES }----------------------------------------- */
 
@@ -144,7 +145,7 @@ class UnboundIndexError extends CompilerError {
         /* The `type` argument is the name of the indexspace as a string,
         and the `node` argument is the offending number literal token. */
 
-        const template = "The index `{1.v}` is not bound to a {0.s}."
+        const template = "Index `{1.v}` is not bound to a {0.s}."
 
         super(node, format(template, type, node));
     }
@@ -221,8 +222,8 @@ class Segment {
 
         /* This computed property evaluates to an array of bytes that encode
         the constant expression that locates the segment. When present, the
-        explicit `segment` directive is encoded, else a `push i32 0` block
-        is synthesized and returned instead.
+        directive is encoded, else a `push i32 0` block is synthesized and
+        returned instead.
 
         Note: This method is not used by banks (only primer segments). */
 
@@ -241,7 +242,7 @@ class Segment {
     get payload() {
 
         /* This computed attribute evaluates to an array containing all of
-        the elements in the segment (excluding the initial segment-directive,
+        the elements in the segment (excluding the initial @seg directive,
         when present). The elements are still represented as abstract nodes
         (not as bytes) at this point, ready to be encoded by the appropriate
         `encode` method (`DataSection.encode` or `ElementSection.encode`). */
@@ -324,7 +325,7 @@ class TableBankSegment extends Segment {
     constructor(segment) {
 
         /* This constructor passes the only segment of the primer to the
-        parent constructor (allowing this instance to be processedlike a
+        parent constructor (allowing this instance to be processed like a
         regular segment), before passing the instance to the Element
         Section. */
 
@@ -451,7 +452,11 @@ class VectorSection {
     compile() {
 
         /* This method compiles the instance to a complete section, including
-        the section ID, the length (bytewise), and the payload vector. */
+        the section ID, the length (bytewise), and the payload vector.
+        
+        Note: This method replaces any `Identity` instances in the `payload`
+        array with the corresponding bytes (now all of the indices have been
+        assigned to the corresponding components). */
 
         if (this.items.length === 0) return []; // omit any empty sections
 
@@ -525,17 +530,14 @@ class TypeSection extends VectorSection {
         resolves it, and returns the `TypeExpression` node of the referenced
         type definition by default, or its index when the `byIndex` argument
         is truthy (assuming that everything is valid). If the reference uses
-        an undefined identity or an index for an implicitly defined type, an
-        exception is raised. */
+        an undefined identity, an exception is raised. */
 
         const index = resolveIdentity("type", reference.identity);
         const type = INDEXSPACES.components.type[index];
 
-        if (type instanceof TypeDefinition) {
+        if (type instanceof TypeDefinition) return byIndex ? index : type.type;
 
-            return byIndex ? index : type.type;
-
-        } else if (reference.identity instanceof Identifier) {
+        if (reference.identity instanceof Identifier) {
 
             throw new UnboundIdentifierError("type", reference.identity);
 
@@ -991,9 +993,9 @@ class CodeSection extends VectorSection {
         this.labels.pop();
     }
 
-    * UNREACHABLE(instruction) {
+    * CRASH(instruction) {
 
-        /* The compiler for the `unreachable` mnemonic. */
+        /* The compiler for the `CRASH` mnemonic. */
 
         yield 0x00;
     }
@@ -1271,7 +1273,7 @@ class CodeSection extends VectorSection {
         WAT). */
 
         yield 0x11;
-        yield * ULEB128(SECTIONS[1].resolveType(instruction));
+        yield new Identity("type", instruction.type.identity);
         yield new Identity("table", instruction.table);
     }
 
@@ -1306,7 +1308,7 @@ class CodeSection extends VectorSection {
             i64i8: [0x3C, 0], i64i16: [0x3D, 1], i64i32: [0x3E, 2]
         };
 
-        const datatype = instruction.datatype?.value || "";
+        const datatype = instruction.datatype?.value ?? "";
 
         yield * codes[instruction.type.value + datatype];
         yield * ULEB128(instruction.offset);
@@ -1499,9 +1501,9 @@ class CodeSection extends VectorSection {
         yield 0xA7;
     }
 
-    * CAST(instruction) {
+    * BITCAST(instruction) {
 
-        /* This is the compiler for the `cast` mnemonic (`reinterpret` in
+        /* This is the compiler for the `bitcast` mnemonic (`reinterpret` in
         WAT). */
 
         const opcodes = {i32: 0xBC, i64: 0xBD, f32: 0xBE, f64: 0xBF};
@@ -1672,9 +1674,9 @@ class CodeSection extends VectorSection {
         yield * this.ATOMICS(instruction, 0x3A);
     }
 
-    * ATOMIC_SWAP(instruction) {
+    * ATOMIC_TRADE(instruction) {
 
-        /* The compiler for the `atomic swap` instruction (`xchg` in WAT). */
+        /* The compiler for the `atomic trade` instruction (`xchg` in WAT). */
 
         yield * this.ATOMICS(instruction, 0x41);
     }
@@ -1720,7 +1722,7 @@ class CodeSection extends VectorSection {
         index to update the Name Section), then encodes the locals and body of
         the function definition (in this section) as a wasm-code-entry. */
 
-        const registerLocalRegister = node => {
+        const registerLocalRegister = function(node) {
 
             /* This helper takes a `node` that defines a local register (that
             will be a `ParamElement` or `LocalDefinition`). The helper always
@@ -1755,12 +1757,12 @@ class CodeSection extends VectorSection {
 
         } else this.localIndex = TypeSection.referenceType(type).params.length;
 
-        component.locals.forEach(function(local) {
+        for (const local of component.locals) {
 
             payload.push(0x01);
             payload.push(encodings[local.type.value]);
             registerLocalRegister(local);
-        });
+        }
 
         SECTIONS[0].appendLocals(this.index, this.locals);
 
@@ -1855,11 +1857,10 @@ class DataSection extends VectorSection {
         if (type.value === "utf8") return Array.from(encodeUTF8(value.value));
 
         const buffer = new ArrayBuffer(length);
-        const output = new Uint8Array(buffer);
 
         new views[type.value](buffer)[0] = evaluateLiteral(value);
 
-        return Array.from(output);
+        return Array.from(new Uint8Array(buffer));
     }
 }
 
@@ -2091,14 +2092,6 @@ const registerComponent = function(type, component, bind=false) {
     return index;
 };
 
-const resolveComponent = function(type, index) {
-
-    /* This helper takes a indexspace name (`type`) and an index, and returns
-    the corresponding component, or `undefined` if it does not exist. */
-
-    return INDEXSPACES.components[type][index];
-};
-
 const registerIdentifier = function(type, node, index) {
 
     /* This helper takes an indexspace name (`type`), an identifier node (that
@@ -2136,15 +2129,20 @@ const resolveIdentifier = function(type, identifier) {
 
 const resolveIdentity = function(type, identity) {
 
-    /* This helper takes a indecspace name (`type`) and an identity (an index
-    or identifier). It returns the expressed index. */
+    /* This helper takes a component type name (as a string) and an identity.
+    It returns the corresponding index, as a number, unless the index is out
+    of bounds.
+
+    Note: Implicitly defined types are effectively out of bounds. */
 
     if (identity instanceof NumberLiteral) {
 
         const index = evaluateLiteral(identity);
-        const bound = INDEXSPACES.components[type].length;
+        const components = INDEXSPACES.components[type];
+        const identifiers = Object.keys(INDEXSPACES.identifiers[type]);
 
-        if (index < bound) return index;
+        if (type === "type" && index < identifiers.length) return index;
+        else if (index < components.length) return index;
         else throw new UnboundIndexError(type, identity);
 
     } else return resolveIdentifier(type, identity);
@@ -2155,7 +2153,7 @@ const reset = function(configuration) {
     /* This is the generic reset helper for this module. It resets the
     compiler state, ready for a new source file to be compiled. */
 
-    [SOURCE, URL] = [configuration.source, configuration.url];
+    [SOURCE, URL] = [configuration.source, configuration.url ?? "<source>"];
 
     SECTIONS = [
         new NameSection(0),
@@ -2261,116 +2259,59 @@ const IEEE754 = stack(function(push, pop, input, width) {
     for (const byte of bytes) push(byte);
 });
 
-/* --{ THE COMPILER STAGES }------------------------------------------------ */
-
-const stageZero = function(statements) {
-
-    /* This helper implements Stage One of the compiler. It takes an instance
-    of the `parse` generator, which it iterates over to access the statements
-    of the current module. It sorts the statements into three arrays, one for
-    definitions, one for imports and a third for exports, though type, memory
-    bank and table bank definitions are handled immediately (not pushed to an
-    array). The helper returns an array containing the three statement arrays,
-    in the order: imports, definitions, exports. */
-
-    const [imports, definitions, exports] = [[], [], []];
-
-    for (const statement of statements) {
-
-        const is = Class => statement instanceof Class;
-
-        if (is(ImportStatement)) imports.push(statement);
-        else if (is(ExportStatement)) exports.push(statement);
-        else {
-
-            const component = statement.component;
-            const name = component.name;
-
-            if (name === "type") {
-
-                component.index = registerComponent(name, component, true);
-                SECTIONS[1].append(statement);
-
-            } else if (name === "memorybank") {
-
-                component.index = registerComponent(name, component, true);
-                new MemoryBankSegment(component.primer);
-
-            } else if (name === "tablebank") {
-
-                component.index = registerComponent(name, component, true);
-                new TableBankSegment(component.primer);
-
-            } else definitions.push(statement);
-        }
-    }
-
-    return [imports, definitions, exports];
-};
-
-const stageOne = function(imports) {
-
-    /* This helper implements Stage Two, which handles all of the import
-    statements. It takes an array of import statements, compiles them and
-    returns `undefined`. */
-
-    for (const statement of imports) {
-
-        const component = statement.component;
-
-        component.index = registerComponent(component.name, component, true);
-        SECTIONS[2].append(statement);
-    }
-};
-
-const stageTwo = function(definitions) {
-
-    /* This helper implements Stage Three, which handles all of the define
-    statements. It takes an array of (the remaining) define statements, and
-    compiles them, before returning `undefined`. */
-
-    const sections = {function: 3, table: 4, memory: 5, register: 6};
-
-    for (const statement of definitions) {
-
-        const component = statement.component;
-        const name = component.name;
-
-        if (name in sections) {
-
-            component.index = registerComponent(name, component, true);
-            SECTIONS[sections[name]].append(statement);
-        }
-    }
-};
-
-const stageThree = function(exports) {
-
-    /* This helper implements Stage Four, which handles all of the export
-    statements. It takes an array of export statements, and compiles them,
-    before returning `undefined`. */
-
-    for (const statement of exports) SECTIONS[7].append(statement);
-};
-
 /* --{ THE COMPILER ENTRYPOINT }-------------------------------------------- */
 
 export const compile = function * (configuration) {
 
     /* This is the entrypoint generator for the compiler, and generally for
     the assembler as a pipeline. It takes a configuration hash, and yields
-    the given module bytewise, or throws a syntax error, if the source is
-    invalid. */
+    the given module bytewise, or throws a syntax error if the source is
+    invalid.
+    
+    Note: Memory bank, table bank and function type defintions are hoisted
+    above other kinds of statement, effectively giving memory banks, table
+    banks and function types their own indexspaces. */
+
+    const first = statement => firsts.includes(statement.component.name);
+    const second = statement => not(first(statement));
 
     reset(configuration);
 
-    const [imports, definitions, exports] = stageZero(parse(configuration));
+    const firsts = ["memorybank", "tablebank", "type"];
+    const statements = Array.from(parse(configuration));
 
-    stageOne(imports); stageTwo(definitions); stageThree(exports);
+    // firstly, hoist all of the bank and type definitions...
 
-    yield * header;
+    for (const statement of statements.filter(first)) {
 
-    for (const id of sectionIDs) yield * SECTIONS[id].compile();
+        const {component, component: {name}} = statement;
+
+        component.index = registerComponent(name, component, true);
+
+        if (name === "memorybank") new MemoryBankSegment(component.primer);
+        else if (name === "tablebank") new TableBankSegment(component.primer);
+        else SECTIONS[1].append(statement);
+    }
+
+    // now, handle the imports, exports and the remaining definitions...
+
+    for (const statement of statements.filter(second)) { // system components
+
+        const {component, component: {name}} = statement;
+
+        if (statement instanceof ExportStatement) SECTIONS[7].append(statement);
+        else {
+
+            component.index = registerComponent(name, component, true);
+
+            if (statement instanceof ImportStatement) SECTIONS[2].append(statement);
+            else SECTIONS[sectionMap[name]].append(statement);
+        }
+    }
+
+    // finally, yield the complete binary, one byte at a time...
+
+    yield * header; for (const id of sectionIDs) yield * SECTIONS[id].compile();
 };
 
 export default compile;

@@ -21,12 +21,12 @@ let LAST_TOKEN;     // tracks which type of token was last to be yielded
 
 /* --{ A BUNCH OF USEFUL CONSTANTS }---------------------------------------- */
 
+const [empty, space] = ["", " "];
 const [openBrace, closeBrace] = ["{", "}"];
-const [plus, minus, dollar, circumflex] = ["+", "-", "$", "^"];
-const [slash, backslash, underscore, dot] = ["/", "\\", "_", "."];
-const [empty, space, newline, tab, quote] = ["", " ", "\n", "\t", "\""];
-const [comma, semicolon, hash, atSign, zero] = [",", ";", "#", "@", "\0"];
+const [plus, minus, dollarSign, atSign] = ["+", "-", "$", "@"];
+const [comma, hash, asterisk, bar, underscore] = [",", "#", "*", "|", "_"];
 const [backspace, formfeed, carriage, verticalTab] = ["\b", "\f", "\r", "\v"];
+const [nullchar, newline, tab, quote] = ["\0", "\n", "\t", "\""];
 
 const arrow = "->";
 const ellipsis = "...";
@@ -52,21 +52,25 @@ const qualifiers = [
     "shared", "atomic"
 ];
 
+const directives = [
+    "register", "segment"
+]
+
 const keywords = [
-    "define", "import", "export", "type", "prime", "from", "max", "null",
+    "define", "import", "export", "type", "prime", "from", "plus", "null",
     "start", "sop", "of", "with", "to", "zero", "equal", "less", "more",
-    "thus", "bank", "segment", "at", "sop", "via", "in", "as"
+    "thus", "bank", "at", "sop", "in", "as"
 ];
 
 const operations = [
-    "get", "set", "put", "nop", "unreachable", "drop", "return", "add",
+    "get", "set", "put", "nop", "crash", "drop", "return", "add",
     "sub", "expand", "fork", "exit", "shift", "rotate", "sign", "grow",
-    "fence", "min", "max", "load", "store", "and", "or", "xor", "swap",
+    "fence", "min", "max", "load", "store", "and", "or", "xor", "trade",
     "abs", "nearest", "ceiling", "floor", "root", "invoke", "mul", "div",
     "rem", "block", "loop", "branch", "else", "is", "not", "push", "jump",
     "fill", "size", "copy", "extend", "select", "wrap", "promote", "demote",
-    "lop", "convert", "cast", "notify", "broker", "ctz", "clz", "nsa", "call",
-    "neg", "wait"
+    "lop", "convert", "bitcast", "notify", "broker", "ctz", "clz", "nsa",
+    "call", "neg", "wait"
 ];
 
 const escapees = {
@@ -77,7 +81,7 @@ const escapees = {
     q: quote, quote,                                     // q | quote
     n: newline, newline,                                 // n | newline
     b: backspace, backspace,                             // b | backspace
-    z: zero, null: zero, zero,                           // z | null | zero
+    z: nullchar, null: nullchar, zero: nullchar,         // z | null | zero
     f: formfeed, ff: formfeed, formfeed,                 // f | ff | formfeed
     r: carriage, cr: carriage, return: carriage,         // r | cr | return
     v: verticalTab, vt: verticalTab, vtab: verticalTab,  // v | vt | vtab
@@ -120,7 +124,7 @@ export class PhantasmError extends SyntaxError {
         super();
 
         const title = format(`{0.t} (Assembly Abandoned):`, this);
-        const location = `${line}:${column} ${url}`;
+        const location = `${line}:${column} in ${url}`;
 
         this.stack =  `${title}\n${text}\n${location}`;
     }
@@ -309,6 +313,7 @@ export class Operation extends Token {}
 export class Primitive extends Token {}
 export class SkinnyArrow extends Token {}
 export class Keyword extends Token {}
+export class Directive extends Token {}
 export class Void extends Token {}
 export class EOF extends Token {}
 
@@ -465,12 +470,17 @@ export const normalizeNumberLiteral = iife(function() {
     };
 });
 
-const advance = function() {
+const advance = function(unicode=false) {
 
     /* This function provides the lexer with a scanner that will move the
-    global lexer state forward one character, then check the result. If the
-    character is illegal (in an PHANTASM file), lexing is aborted. Otherwise,
+    global lexer state forward one character, and check the result. If the
+    character is illegal (given the context), lexing is aborted. Otherwise,
     the character is returned.
+
+    The optional argument (`unicode`) indicates whether or not the lexer is
+    advancing within a chunk of regular code (false) where ASCII printables
+    and newlines are allowed, or within a string or comment (true) where
+    arbitrary Unicode is supported.
 
     Note: The character will become `undefined` once the source is exhausted.
     The lexer uses this to indicate when to stop the loop and yield a final
@@ -481,13 +491,9 @@ const advance = function() {
 
     CHARACTER = SOURCE[++INDEX];
 
-    if (on(newline) || on(undefined)) return CHARACTER; // the special cases
-
-    if (not(printable(CHARACTER))) {   // if `code` not an ASCII printable
-
-        throw new IllegalCharacterError(CHARACTER, true);
-
-    } else return CHARACTER;
+    if (on(newline) || on(undefined)) return CHARACTER;
+    else if (printable(CHARACTER) || unicode) return CHARACTER;
+    else throw new IllegalCharacterError(CHARACTER, true);
 };
 
 const printable = function(character) {
@@ -495,7 +501,7 @@ const printable = function(character) {
     /* This helper takes a character and returns a bool that indicates
     whether the character is an ASCII printable or not. */
 
-    const code = character.charCodeAt(0);
+    const code = character.charCodeAt();
 
     return not(code < 0x20 || code > 0x7E);
 };
@@ -507,7 +513,7 @@ const serialize = function(character) {
     returned. This is used in error messages that interpolate characters. */
 
     if (printable(character)) return character;
-    else return "0x" + character.charCodeAt(0).toString(16);
+    else return "0x" + character.charCodeAt().toString(16);
 };
 
 const note = function(token) {
@@ -630,13 +636,13 @@ const gatherString = function() {
             return expression.toUpperCase() !== expression;
         };
 
-        while (advance()) {
+        while (advance(true)) {
 
             if (on(quote)) return;
             else if (on(newline)) unexpected("newline", "literal");
             else if (on(closeBrace) && accept(closeBrace)) push(closeBrace);
             else if (on(openBrace) && accept(openBrace)) push(openBrace);
-            else if (on(openBrace)) while (advance()) {
+            else if (on(openBrace)) while (advance(false)) {
 
                 if (on(space)) continue;
                 if (on(closeBrace)) break;
@@ -676,6 +682,9 @@ const classify = function() {
     plaint is raised. */
 
     const token = TOKEN_STRING;
+    const tail = token.slice(1);
+    const first = token[0];
+    const second = token[1];
 
     if (token === "void") return new Void();
 
@@ -693,9 +702,11 @@ const classify = function() {
 
     if (constants.includes(token)) return new Constant();
 
-    if (token[0] === dollar && token[1]) return new Identifier(token.slice(1));
+    if (directives.includes(tail)) return new Directive(tail);
 
-    if (numerics.includes(token[0])) return numerical(token);
+    if (first === dollarSign && second) return new Identifier(tail);
+
+    if (numerics.includes(first)) return numerical(token);
 
     throw new UnrecognizedTokenError(token);
 };
@@ -779,26 +790,29 @@ const handleContinuation = function() {
     else throw new InvalidContinuationError(true);
 };
 
-const handleCommentary = function() {
+const handleInlineCommentary = function() {
 
-    /* This helper is called on a semicolon character, and gathers up either
-    a multiline or an inline comment, depending on the next character. A com-
-    plaint is raised if a multiline comment is left unclosed. Any gathered
-    comment is discarded, and `undefined` is always returned. */
+    /* This helper is called on a hash character, and gathers an inline
+    comment, which is simply discarded, before `undefined` is returned. */
 
-    if (peek() === semicolon) {                             // multiline
+    while (peek() && peek() !== newline) advance(true);
+};
 
-        const error = new NeverendingCommentError();
+const handleMultilineCommentary = function() {
 
-        advance(); advance(); // skip past the opening semicolons
+    /* This helper is called on an asterisk character, and gathers a multi-
+    line comment. A complaint will be raised if the comment is left unclosed.
+    Otherwise, the comment is discarded, and `undefined` is returned. */
 
-        while (CHARACTER + advance() !== semicolon + semicolon) {
+    const error = new NeverendingCommentError(); // locate at the beginning
 
-            if (on(newline)) advanceLine();
-            else if (on(undefined)) throw error;
-        }
+    advance(); // skip past the opening asterisk
 
-    } else while (peek() && peek() !== newline) advance();  // inline
+    while (advance(true) !== asterisk) {
+
+        if (on(newline)) advanceLine();
+        else if (on(undefined)) throw error;
+    }
 };
 
 const measureIndentation = function() {
@@ -827,9 +841,12 @@ const measureIndentation = function() {
 
         while (accept(space)) spaces++; // tally up the leading spaces
 
-        if (peek() === newline) continue;
-        else if (peek() === undefined) { spaces = 0; break }
-        else if (peek() === semicolon) { advance(); handleCommentary() }
+        const next = peek();
+
+        if (next === newline) continue;
+        else if (next === undefined) { spaces = 0; break }
+        else if (next === bar) { advance(); handleInlineCommentary() }
+        else if (next === asterisk) { advance(); handleMultilineCommentary() }
         else break;
     }
 
@@ -845,7 +862,7 @@ const reset = function(configuration) {
     state, ready for a new source file. */
 
     INDENT_LEVEL = 0;
-    URL = configuration.url;
+    URL = configuration.url ?? "<source>";
     SOURCE = configuration.source;
     [INDEX, CHARACTER] = [-1, ""];
     [TOKEN_STRING, LAST_TOKEN] = ["", undefined];
@@ -873,9 +890,17 @@ export const lex = function * (configuration) {
 
         else if (on(quote)) yield note(new StringLiteral(gatherString()));
 
-        else if (on(semicolon)) handleCommentary();
+        else if (on(bar)) handleInlineCommentary();
 
-        else if (specials.includes(CHARACTER)) {
+        else if (on(asterisk)) handleMultilineCommentary();
+
+        else if (on(atSign)) {
+
+            gatherRegular();
+
+            yield note(classify());
+
+        } else if (specials.includes(CHARACTER)) {
 
             if (on(comma)) yield note(new Comma());
             else throw new IllegalCharacterError(CHARACTER, false);

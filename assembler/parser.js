@@ -10,7 +10,7 @@ import {
     Keyword, Primitive, Qualifier, ImplicitQualifier, Void, SkinnyArrow,
     Identifier, Identity, normalizeNumberLiteral, EOF, Dedent, Delimiter,
     Operation, Indentation, Indent, StringLiteral, ImplicitString,
-    Terminator, Comma, NumberLiteral, ImplicitNumber
+    Terminator, Comma, NumberLiteral, ImplicitNumber, Directive
 } from "/assembler/lexer.js";
 
 /* --{ THE GLOBAL PARSER STATE }-------------------------------------------- /*
@@ -399,11 +399,11 @@ class UnexpectedInlineBlockError extends ParserError {
 
 class SegmentedBankError extends ParserError {
 
-    /* Thrown when an segment-directive is found inside a bank primer. */
+    /* Thrown when an seg-directive is found inside a bank primer. */
 
     constructor() {
 
-        super("Bank primers cannot be segmented (banks are segments).");
+        super("Bank primers cannot be segmented (banks *are* segments).");
     }
 }
 
@@ -424,10 +424,10 @@ class EmptySegmentError extends ParserError {
 
     constructor(token) {
 
-        /* The `token` argument is the segment-keyword token instance. It is
-        used to point the user to the beginning of the segment-block, which
-        the parser is beyond (having parsed the block of instructions) by
-        the time this error is discovered. */
+        /* The `token` argument is the `@seg` directive instance. It is used
+        to point the user to the beginning of the segment, which the parser
+        is beyond (having parsed the block of instructions) by the time
+        this error is discovered. */
 
         const options = token.location;
 
@@ -717,16 +717,8 @@ export class BlockInstruction extends Instruction {
 
         this.identifier = accept(Identifier);
 
-        if (acceptKeyword("with")) {
-
-            if (at(Void)) this.type = advance();
-            else this.type = requireValtype();
-
-        } else {
-
-            requireKeyword("of");
-            this.type = requireType(true);
-        }
+        if (acceptKeyword("of")) this.type = requireType(true);
+        else this.type = new TypeExpression([], [], this.location);
 
         requireIndentedBlock(this);
 
@@ -941,7 +933,7 @@ class CarouselInstruction extends Instruction {
 
     parse() {
 
-        const check = (description, ...types) => {
+        const check = function(description, ...types) {
 
             if (evaluate(this.type, ...types)) return;
             else throw new InvalidPrimitiveError(description, this);
@@ -1141,7 +1133,7 @@ export class RegisterDefinition extends ComponentDefinition {
 export class LocalDefinition extends ComponentDefinition {
 
     /* Concrete class for each local register definition (usually combined
-    into a larger `local` directive, defining multiple registers). */
+    into a larger `@register` directive, defining multiple registers). */
 
     constructor(type, identifier, location) {
 
@@ -1477,17 +1469,17 @@ export class MemoryElement extends Node {
 
 export class SegmentElement extends Node {
 
-    /* Concrete class for the `segment` directives within primers, which are
+    /* Concrete class for the `@segment` directives within primers, which are
     used to divide the primer into segments. */
 
     constructor() {
 
-        /* This constructor parses `segment` directives. */
+        /* This constructor parses `@segment` directives. */
 
         super(CURRENT_TOKEN.location);
         this.block = [];
 
-        if (acceptKeyword("at")) {              // at-integer shorthand
+        if (at(NumberLiteral)) {                // simple integer shorthand
 
             this.block.push(boundscheck(require(NumberLiteral)));
             require(Terminator);
@@ -1511,7 +1503,7 @@ const instructions = Object.create(null);
 instructions.atomic = Object.create(null);
 
 instructions.nop = class NOP extends Instruction {}
-instructions.unreachable = class UNREACHABLE extends Instruction {}
+instructions.crash = class CRASH extends Instruction {}
 instructions.return = class RETURN extends Instruction {}
 
 instructions.put = class PUT extends IdentifiedInstruction {}
@@ -1664,7 +1656,7 @@ instructions.invoke = class INVOKE extends Instruction {
     WAT). The instruction takes a required type immediate, followed by an
     optional table reference (which defaults to zero):
 
-        invoke <type> [via <identity>]
+        invoke <type> [in <identity>]
 
     Even when the table is implicit, and the type uses a type expression that
     expresses its results with a list of comma-separated types (not void), it
@@ -1676,7 +1668,7 @@ instructions.invoke = class INVOKE extends Instruction {
 
         this.type = requireType(true);
 
-        if (acceptKeyword("via")) this.table = require(Identity);
+        if (acceptKeyword("in")) this.table = require(Identity);
         else this.table = new ImplicitNumber(0, this.location);
     }
 }
@@ -1810,9 +1802,9 @@ instructions.convert = class CONVERT extends Instruction {
     }
 }
 
-instructions.cast = class CAST extends Instruction {
+instructions.bitcast = class BITCAST extends Instruction {
 
-    /* This class implements the `cast` mnemonic (`reinterpret` in Wasm). */
+    /* This class implements the `bitcast` mnemonic (`reinterpret` in Wasm). */
 
     parse() {
 
@@ -1857,7 +1849,7 @@ instructions.atomic.sub = class ATOMIC_SUB extends MemoryInstruction {}
 instructions.atomic.and = class ATOMIC_AND extends MemoryInstruction {}
 instructions.atomic.or = class ATOMIC_OR extends MemoryInstruction {}
 instructions.atomic.xor = class ATOMIC_XOR extends MemoryInstruction {}
-instructions.atomic.swap = class ATOMIC_SWAP extends MemoryInstruction {}
+instructions.atomic.trade = class ATOMIC_TRADE extends MemoryInstruction {}
 instructions.atomic.broker = class ATOMIC_BROKER extends MemoryInstruction {}
 instructions.atomic.load = class ATOMIC_LOAD extends MemoryInstruction {}
 
@@ -2227,41 +2219,18 @@ const requirePrefix = function(keyword, type) {
     if (requireKeyword(keyword)) return require(type);
 };
 
-const acceptMaxQualifier = function() {
-
-    /* This helper returns the next token if it is the Operation token named
-    `max`. This is used by the limits-parsing functions below, that overload
-    `max` as a qualifier. */
-
-    if (atToken(Operation, "max")) return advance();
-};
-
-const acceptLimits = function() {
-
-    /* This helper accepts a limits definition for a memory or table. If a
-    maximum is defined without an initial length, the helper complains, else
-    it returns an array with the two number literal tokens (which may both be
-    `undefined`), with the initial length followed by the maximum length. */
-
-    let min = acceptPrefix("with", NumberLiteral);
-    let max = acceptPrefix("to", NumberLiteral);
-
-    if (max && not(min)) throw new InvertedLimitsError();
-    else if (min && not(max) && acceptMaxQualifier()) return [min, min];
-    else return [min, max];
-};
-
 const requireLimits = function() {
 
     /* This helper requires a limits definition for a memory or table, which
-    must be present, but may or may not include a maximum length. It returns
-    the two values as an array of number literal tokens, with the initial
-    length followed by the maximum length or `undefined`. */
+    must be present, but may or may not specify a length. It returns the two
+    values as an array of number literal tokens, with the initial length,
+    followed by the maximum length (which may be `undefined`). */
 
     const min = requirePrefix("with", NumberLiteral);
 
-    if (acceptMaxQualifier()) return [min, min];
-    else return [min, acceptPrefix("to", NumberLiteral)];
+    if (acceptKeyword("plus")) return [min, undefined];
+    else if (acceptKeyword("to")) return [min, require(NumberLiteral)];
+    else return [min, min];
 };
 
 const requireFullLimits = function() {
@@ -2273,8 +2242,8 @@ const requireFullLimits = function() {
 
     const min = requirePrefix("with", NumberLiteral);
 
-    if (acceptMaxQualifier()) return [min, min];
-    else return [min, requirePrefix("to", NumberLiteral)];
+    if (acceptKeyword("to")) return [min, require(NumberLiteral)];
+    else return [min, min];
 };
 
 const acceptValtype = function() {
@@ -2456,7 +2425,7 @@ const requireComponent = function(...names) {
     /* Require that the next token has a given name, else complain. */
 
     if (acceptComponent(...names)) return CURRENT_TOKEN;
-    else throw new UnexpectedComponentError(names);
+    else throw new UnexpectedComponentError(names, advance());
 };
 
 const requireType = function(expression) {
@@ -2504,7 +2473,7 @@ const requireTypeExpression = function(signature) {
 
             This is required to avoid an edgecase, where `invoke` can only
             have instructions nested after it in some situations and not
-            others. */
+            others (otherwise). */
 
             return not(at(Comma)) || typecheck(FUTURE_TOKEN, Operation);
         };
@@ -2546,13 +2515,14 @@ const requireTypeExpression = function(signature) {
 
 const requireLocals = function(parent) {
 
-    /* Gather one line of locals definitions, pushing each to the parent
-    node argument. This helper is called on the `local` keyword. When it
-    is done, it checks for, consumes and returns the line-terminator. */
+    /* Gather one line of local register definitions, pushing each to the
+    `locals` attribute of the parent, which is passed as the only  argument.
+    This helper is called on the `@register` directive. When done, it checks
+    for, consumes and returns the line-terminator. */
 
     let type, typed;
 
-    advance();
+    advance(); // skip over the `@register` directive
 
     while (true) {
 
@@ -2562,12 +2532,10 @@ const requireLocals = function(parent) {
         const location = typed ? typed.location : identifier.location;
 
         if (not(type)) throw new UntypedLocalError();
-        else parent.locals.push(
-            new LocalDefinition(type, identifier, location)
-        );
+        
+        parent.locals.push(new LocalDefinition(type, identifier, location));
 
-        if (at(Comma)) advance();
-        else return require(Terminator);
+        if (at(Comma)) { advance() } else return require(Terminator);
     }
 };
 
@@ -2639,7 +2607,7 @@ const requireIndentedBlock = function(parent, expression=false) {
 
     if (parent instanceof FunctionDefinition) { // first, gather any locals...
 
-        while (atToken(Qualifier, local)) requireLocals(parent);
+        while (atToken(Directive, "register")) requireLocals(parent);
     }
 
     while (true) { // then, (recursively) gather a block of instructions...
@@ -2666,27 +2634,23 @@ const requireFunctionSpecifier = function() {
     the global `START` boolean as required, and throws an exception if the
     current module defines more than one start function. */
 
-    let identifier = undefined;
-
     if (acceptKeyword("start")) {
-
-        const location = CURRENT_TOKEN.location;
-        const type = new TypeExpression([], [], location);
 
         if (START) throw new MultipleStartFunctionsError(location);
         else START = true;
 
-        requireComponent("function");
+        var start = true;
+    
+    } else var start = false;
 
-        return [true, accept(Identifier), type];
-    }
+    if (acceptComponent("function")) var identifier = accept(Identifier);
+    else if (start) var identifier = accept(Identifier);
+    else var identifier = require(Identifier);
 
-    if (atToken(Component, "function")) advance();
-    else identifier = require(Identifier);
+    if (acceptKeyword("of")) var type = requireType(false);
+    else var type = new TypeExpression([], [], CURRENT_TOKEN.location);
 
-    requireKeyword("of");
-
-    return [false, identifier, requireType(false)];
+    return [start, identifier, type];
 };
 
 const requireMemoryElement = function(push, context, newline) {
@@ -2736,12 +2700,13 @@ const requireTableElement = function(push, context, newline) {
 
 const requirePrimer = function(name, bank) {
 
-    /* This helper gathers and returns a primer for a memory or table. It will
-    ensure that each element specifies its type (directly or inherited from a
-    previous element). The first argument (`name`) is a string that is one of
-    "memory" or "pointer" ("mixed" and "proxy" may be supported later, if the
-    specification supports primers for those table types). The argument `bank`
-    is a bool that indicates whether the primer belongs to a bank or not. */
+    /* This helper is called on the `@seg` directive. It gathers a primer for
+    a memory or table, ensuring that each element specifies its type (either
+    directly or inherited from a previous element), then retuns it. The first
+    arg (`name`) is the string "memory" or "pointer" ("mixed" and "proxy" may
+    be supported later, if the specification supports primers for those table
+    types). The argument `bank` is a bool that indicates whether the primer
+    belongs to a bank or not. */
 
     const push = item => segment.push(item);
 
@@ -2756,7 +2721,9 @@ const requirePrimer = function(name, bank) {
 
     while (true) {
 
-        if (not(on(Comma)) && acceptKeyword("segment")) {
+        if (not(on(Comma)) && atToken(Directive, "segment")) {
+
+            advance(); // skip the `@seg` directive
 
             if (inline) throw new UnexpectedInlineBlockError(advance());
             else if (bank) throw new SegmentedBankError();
@@ -2859,7 +2826,7 @@ const reset = function(configuration) {
     /* This is the generic reset helper for this module. It resets
     the parser state, ready for a new source. */
 
-    URL = configuration.url;
+    URL = configuration.url ?? "<source>";
     TOKENS = lex(configuration);
     [CURRENT_TOKEN, NEXT_TOKEN] = [undefined, undefined];
     [GLOBAL_CONTEXT, START] = [true, false];
