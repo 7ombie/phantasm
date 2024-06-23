@@ -716,9 +716,11 @@ class GlobalSection extends VectorSection {
     encodeInitializer(component) {
 
         /* This method takes a register definition that either has an implicit
-        initializer, or uses the `as` prefix (instead of an explicit constant
-        expression). The parser represents this sugar (in the `block` array)
-        with tokens that are distinct from actual instructions.
+        initializer, or uses the `with` prefix instead.
+        
+        Note: The parser represents the with-sugar (in the `block` array) using
+        tokens that are distinct from the instruction tokens that are used by
+        constant expressions.
 
         The method looks at the given component (especially the token stored
         in `block[0]`) to figure out which instruction is being implied, and
@@ -738,19 +740,23 @@ class GlobalSection extends VectorSection {
         Numtype registers with an explicit initializer (which is expressed as
         a `NumberLiteral`) store the literal token:
 
-            define constant i32 as 1      push i32 1        i32.const 1
-            define constant i64 as 2      push i64 2        i64.const 2
-            define constant f32 as 3.4    push f32 3.4      f32.const 3.4
-            define constant f64 as 5.6    push f64 5.6      f64.const 5.6
+            define constant i32 with 1      push i32 1      i32.const 1
+            define constant i64 with 2      push i64 2      i64.const 2
+            define constant f32 with 3.4    push f32 3.4    f32.const 3.4
+            define constant f64 with 5.6    push f64 5.6    f64.const 5.6
 
         Pointer registers with an explicit initializer (which is expressed as
         an identity) store the `NumberLiteral` or `Identifier` instance. This
-        implies a `ref.func` operation (excepting unbound identifiers):
+        implies a `ref.func` operation:
 
-            define constant pointer as 1    push pointer 1      ref.func 1
-            define constant pointer as $p   push pointer $foo   ref.func $foo
+            define constant pointer with 1    push pointer 1    ref.func 1
+            define constant pointer with $f   push pointer $f   ref.func $f
 
-        Proxy registers cannot use the `as` keyword, as there is nothing to
+        Note: As always, identity resolution is deferred until the indexspaces
+        are all finalized, so functions can be referenced (lexically) ahead of
+        them being imported or defined.
+
+        Proxy registers cannot use the `with` keyword, as there is nothing to
         imply with a number literal, identifier, type *et cetera* that would
         meaningfully express a proxy.
 
@@ -763,26 +769,24 @@ class GlobalSection extends VectorSection {
             pointer: ULEB128,
         };
 
-        const instruction = component.block[0];
+        const initializer = component.block[0];
         const valtype = component.type.value;
         const encode = encoders[valtype];
 
-        if (instruction instanceof Primitive) {
+        if (initializer instanceof Primitive) {
 
             this.push(opcodes.const[valtype], ...encode(0));
 
-        } else if (instruction instanceof Identifier) {
+        } else if (initializer instanceof Identifier) {
 
-            const index = resolveIdentifier("function", instruction);
+            this.push(opcodes.ref.func, new Identity("function", initializer));
 
-            this.push(opcodes.ref.func, ...ULEB128(index));
-
-        } else if (instruction instanceof NumberLiteral) {
+        } else if (initializer instanceof NumberLiteral) {
 
             if (valtype === "pointer") this.push(opcodes.ref.func);
             else this.push(opcodes.const[valtype]);
 
-            this.push(...encode(instruction));
+            this.push(...encode(initializer));
 
         } else this.push(opcodes.ref.null, encodings[valtype]);
 

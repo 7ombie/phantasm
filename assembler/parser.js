@@ -146,12 +146,12 @@ class SuperfluousTokenError extends ParserError {
 
 class ProxyInitializerError extends ParserError {
 
-    /* Thrown when a proxy register definition uses the as-shorthand (which is
-    only valid for pointer and numtype registers). */
+    /* Thrown when a proxy register definition uses the with-shorthand (which
+    is only valid for pointer and numtype registers). */
 
     constructor() {
 
-        super("Cannot use `as` to initialize a proxy register.");
+        super("Cannot use `with` to initialize a proxy register.");
     }
 }
 
@@ -378,7 +378,7 @@ class UnexpectedComponentError extends ParserError {
 
 class ExpectedInlineBlockError extends ParserError {
 
-    /* Thrown when an inline-block was expected (following `thus`), but the
+    /* Thrown when an inline-block was expected (following `as`), but the
     end of line was found. */
 
     constructor() {
@@ -1093,9 +1093,9 @@ export class RegisterDefinition extends ComponentDefinition {
     /* Concrete class for registers definitions, which optionally define an
     identifier and initial value, and are either a `constant` or `variable`.
 
-    The initializer can be implied by omission, defined with a single token,
-    prefixed by the as-keyword (like `as 1` or `as $foo`), or defined by a
-    constant expression. */
+    The initializer can be implied by omission, expressed using an inlinable
+    constant expression, or can use sugar to supply an initial value, which
+    is prefixed by the with-keyword (like `with 1` or `with $foo`). */
 
     constructor(location) {
 
@@ -1106,7 +1106,7 @@ export class RegisterDefinition extends ComponentDefinition {
         this.identifier = accept(Identifier);
         this.block = [];
 
-        if (acceptKeyword("as")) {
+        if (acceptKeyword("with")) {
 
             if (evaluate(this.type, proxy)) throw new ProxyInitializerError();
             else if (evaluate(this.type, pointer)) {
@@ -1484,7 +1484,7 @@ export class SegmentElement extends Node {
             this.block.push(boundscheck(require(NumberLiteral)));
             require(Terminator);
 
-        } else if (acceptKeyword("thus")) {     // inline block expression
+        } else if (acceptKeyword("as")) {       // inline block expression
 
             requireInlineBlock(this);
 
@@ -2542,10 +2542,10 @@ const requireLocals = function(parent) {
 const requireBlock = function(...args) {
 
     /* This helper just decides whether to parse the require block as inline
-    or indented, based on whether the next token is the `thus` keyword, and
+    or indented, based on whether the next token is the `as` keyword, and
     passing any arguments along, before returning the result. */
 
-    if (acceptKeyword("thus")) return requireInlineBlock(...args);
+    if (acceptKeyword("as")) return requireInlineBlock(...args);
     else return requireIndentedBlock(...args);
 };
 
@@ -2571,7 +2571,7 @@ const resolveInstruction = function() {
 
 const requireInlineBlock = function(parent, expression=false) {
 
-    /* This helper is called on the `thus` keyword before an inline-block.
+    /* This helper is called on the `as` keyword before an inline-block.
     It takes a `parent` node (a`FunctionDefinition` or `BlockInstruction`
     instance), and gathers a block of instructions, pushing each to the
     `parent.block` array. The `expression` argument is passed to the
@@ -2713,7 +2713,7 @@ const requirePrimer = function(name, bank) {
     let [type, segment] = [undefined, []];
 
     const segments = [segment];
-    const inline = acceptKeyword("thus");
+    const inline = acceptKeyword("as");
     const parsers = [requireTableElement, requireMemoryElement];
     const requireElement = parsers[1 * (name === "memory")];
 
