@@ -24,7 +24,7 @@ define memory $data with 1
     @segment as push i32 #100
     u8 255
 
-    @segment 200
+    @segment at 200
     u8 250, utf8 " foobar !! "
 
 define function $func as invoke type 0 in $opcodes

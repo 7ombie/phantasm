@@ -1479,7 +1479,7 @@ export class SegmentElement extends Node {
         super(CURRENT_TOKEN.location);
         this.block = [];
 
-        if (at(NumberLiteral)) {                // simple integer shorthand
+        if (acceptKeyword("at")) {              // simple integer shorthand
 
             this.block.push(boundscheck(require(NumberLiteral)));
             require(Terminator);
