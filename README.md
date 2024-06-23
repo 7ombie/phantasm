@@ -6,9 +6,9 @@ take a look at it. I'm not sure what the future of the project is.
 
 It was unmaintained for a few years (I got into Swift and Metal), but I recently began
 working on it again, and have substantially improved the language (and implementation)
-since. My plan is to implement a few more features (like SIMD), build out a small eco-
-system (tools, syntax highlighting for popular editors *et cetera*), and to spend some
-time using the assembler, then maybe do a rewrite in a year or so (who really knows).
+since. My plan is to implement a few more features (like SIMD), then build out a small
+ecosystem (tools, syntax highlighting for popular editors *et cetera*), and to spend
+some time using the assembler, then maybe do a rewrite in a year or so (who knows).
 
 --------------------------------------------------------------------------------------
 
