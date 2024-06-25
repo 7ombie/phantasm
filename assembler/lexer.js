@@ -17,7 +17,6 @@ let TOKEN_COLUMN;   // 1-indexed column number for start of token
 let LINE_NUMBER;    // current line number (1-indexed)
 let LINE_HEAD;      // the index of the first character in the current line
 let INDENT_LEVEL;   // the current level of indentation
-let NESTING;        // the current level of parenthesized nesting
 let LAST_TOKEN;     // tracks which type of token was last to be yielded
 
 /* --{ A BUNCH OF USEFUL CONSTANTS }---------------------------------------- */
@@ -52,10 +51,6 @@ const constants = [
     "Infinity", "+Infinity", "-Infinity", "NaN"
 ];
 
-const operators = [
-    "+", "-", "*", "/"
-]
-
 const primitives = [
     "utf8", "s8", "u8", "i8", "s16", "u16", "i16", "s32", "u32", "i32",
     "s64", "u64", "i64", "f32", "f64"
@@ -75,9 +70,9 @@ const directives = [
 ]
 
 const keywords = [
-    "define", "import", "export", "type", "prime", "from", "plus", "null",
-    "start", "sop", "of", "with", "to", "zero", "equal", "less", "more",
-    "bank", "at", "sop", "in", "as"
+    "define", "import", "export", "type", "prime", "plus", "null", "start",
+    "sop", "of", "with", "to", "zero", "equal", "less", "more", "bank",
+    "at", "sop", "in", "as", "from"
 ];
 
 const operations = [
@@ -324,25 +319,19 @@ export class Token extends Node {
 export class Identity extends Token {}
 export class Special extends Token {}
 
-export class Paren extends Special {}
-export class Delimiter extends Special {} // delimits statements, commands etc
+export class Delimiter extends Special {} // delimits statements etc
 export class Indentation extends Special {}
 
 /* --{ CONCRETE CLASSES FOR THE LEXER TOKENS }------------------------------ */
 
 export class Component extends Token {}
 export class Operation extends Token {}
-export class Operator extends Token {}
-export class Variable extends Token {}
 export class Primitive extends Token {}
 export class SkinnyArrow extends Token {}
 export class Keyword extends Token {}
 export class Directive extends Token {}
 export class Void extends Token {}
 export class EOF extends Token {}
-
-export class OpenParen extends Paren {}
-export class CloseParen extends Paren {}
 
 export class Indent extends Indentation {}
 export class Dedent extends Indentation {}
@@ -425,8 +414,8 @@ export const format = function(string, ...args) {
     operations being performed on it (generally, args are `Token` instances
     (using `t`, `v`, `V` and `f`) or strings (using `s`).
 
-    Note: The design of this function could be improved, but it works, and
-    has all the features it needs, for now. */
+    Note: Honestly, the design of this function sucks, but it works, and has
+    all the features it needs for now, so I'll replace it later. */
 
     const replace = function(match) {
 
@@ -619,16 +608,6 @@ const gatherRegular = function(start=TOKEN_STRING) {
     return TOKEN_STRING;
 };
 
-const gatherVariable = function() {
-
-    /* Gather a variable name from within a parenthesized expression, then
-    return it (as a convenience). */
-
-    while (at(alphanumerics)) TOKEN_STRING += advance();
-
-    return TOKEN_STRING;
-};
-
 const gatherString = function() {
 
     /* This helper gathers a string literal, handling any escape sequences
@@ -706,58 +685,31 @@ const gatherString = function() {
     return gatherCharacters().join(empty);
 };
 
-const classify = function(token=TOKEN_STRING, context="standard") {
+const classify = function(token=TOKEN_STRING) {
 
     /* This helper takes an optional token string that defaults to the current
-    token string, and an optional context string, which defaults to "standard".
-    The function classifies the token, validates its grammar, establishes its
-    type, and ensures that its type is appropriate for the context (see below).
-    If the token is valid, the helper returns an instance of the corresponding
-    `Token` subclass, and will raise a complaint otherwise.
+    token, and classifies it, validating its grammar, establishing its type,
+    and ensuring that its type is appropriate for the context (see below).
 
-    Note: The only contexts currently supported are "standard" or "expression".
-    Regular code constitutes the "standard" context. Parenthesized expressions,
-    as well as the expressions that are used to initialize the bindings within
-    `@let` preambles, both use the "expression" context. Tokens may be treated
-    differently, depending on context (`define` is a keyword in the "standard"
-    context, but a variable name in the "expression" context, for example). */
+    If the token is valid, the helper returns an instance of the corresponding
+    `Token` subclass, and will raise a complaint otherwise. */
 
     const tail = token.slice(1);
     const first = token[0];
     const second = token[1];
 
-    if (context === "standard") {
-
-        if (token === "void") return new Void();
-        else if (token === arrow) return new SkinnyArrow();
-        else if (operations.includes(token)) return new Operation();
-        else if (keywords.includes(token)) return new Keyword();
-        else if (primitives.includes(token)) return new Primitive();
-        else if (qualifiers.includes(token)) return new Qualifier();
-        else if (components.includes(token)) return new Component();
-        else if (constants.includes(token)) return new Constant();
-        else if (directives.includes(tail)) return new Directive(tail);
-        else if (numerics.includes(first)) return numerical(token);
-        else if (first === dollarSign && second) return new Identifier(tail);
-        else throw new UnrecognizedTokenError(token);
-
-    } else if (context === "expression") {
-
-        if (words.includes(token)) return new Variable();
-        else if (operators.includes(token)) return new Operator();
-        else if (numerics.includes(first)) return numerical(token);
-        else if (alphas.includes(first)) {
-            
-            for (const character of token) {
-
-                if (alphanumerics.includes(character)) continue;
-                else throw new UnrecognizedTokenError(token);            
-            }
-
-            return new Variable();
-
-        } else throw new UnrecognizedTokenError(token);
-    }
+    if (token === "void") return new Void();
+    else if (token === arrow) return new SkinnyArrow();
+    else if (operations.includes(token)) return new Operation();
+    else if (keywords.includes(token)) return new Keyword();
+    else if (primitives.includes(token)) return new Primitive();
+    else if (qualifiers.includes(token)) return new Qualifier();
+    else if (components.includes(token)) return new Component();
+    else if (constants.includes(token)) return new Constant();
+    else if (directives.includes(tail)) return new Directive(tail);
+    else if (first === dollarSign && second) return new Identifier(tail);
+    else if (numerics.includes(first)) return numerical(token);
+    else throw new UnrecognizedTokenError(token);
 };
 
 const numerical = iife(function() {
@@ -864,16 +816,6 @@ const handleMultilineCommentary = function() {
     }
 };
 
-const handleParens = function() {
-
-    /* This helper is called on either paren character. It updates `NESTING`
-    as required, then returns an instance of the appropriate instance of the
-    `Paren` subclass. */
-
-    if (on(openParen)) { NESTING++; return new OpenParen() }
-    else { NESTING--; return new CloseParen() }
-};
-
 const measureIndentation = function() {
 
     /* This helper is called when the current character is a newline. It
@@ -920,10 +862,8 @@ const reset = function(configuration) {
     /* This is the generic reset helper for this module. It resets the lexer
     state, ready for a new source file. */
 
-    INDENT_LEVEL = 0, NESTING = 0;
-    URL = configuration.url ?? "<source>";
-    SOURCE = configuration.source;
-    [INDEX, CHARACTER] = [-1, ""];
+    [URL, SOURCE] = [configuration.url, configuration.source];
+    [INDENT_LEVEL, INDEX, CHARACTER] = [0, -1, ""];
     [TOKEN_STRING, LAST_TOKEN] = ["", undefined];
     [TOKEN_LINE, TOKEN_COLUMN] = [1, 1];
     [LINE_NUMBER, LINE_HEAD] = [1, -1];
@@ -945,14 +885,6 @@ export const lex = function * (configuration) {
 
         if (on(space)) continue;
 
-        if (NESTING) { // comptime expressions...
-
-            if (on(parens)) yield handleParens();
-            else yield note(classify(gatherRegular(), "expression"));
-
-            continue;
-        }
-
         if (on(newline)) for (let token of handleNewline()) yield note(token);
         else if (on(quote)) yield note(new StringLiteral(gatherString()));
         else if (on(bar)) handleInlineCommentary();
@@ -960,7 +892,6 @@ export const lex = function * (configuration) {
         else if (on(specials)) {
 
             if (on(comma)) yield note(new Comma());
-            else if (on(parens)) yield handleParens();
             else throw new IllegalCharacterError(CHARACTER, false);
 
         } else {

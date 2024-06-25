@@ -2826,7 +2826,7 @@ const reset = function(configuration) {
     /* This is the generic reset helper for this module. It resets
     the parser state, ready for a new source. */
 
-    URL = configuration.url ?? "<source>";
+    URL = configuration.url;
     TOKENS = lex(configuration);
     [CURRENT_TOKEN, NEXT_TOKEN] = [undefined, undefined];
     [GLOBAL_CONTEXT, START] = [true, false];

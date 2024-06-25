@@ -23,7 +23,7 @@ import {
 
 /* --{ THE GLOBAL COMPILER STATE }------------------------------------------ */
 
-let SOURCE, URL, INDEXSPACES, SECTIONS;
+let URL, INDEXSPACES, SECTIONS;
 
 /* --{ USEFUL GLOBAL CONSTANTS }-------------------------------------------- */
 
@@ -2157,8 +2157,6 @@ const reset = function(configuration) {
     /* This is the generic reset helper for this module. It resets the
     compiler state, ready for a new source file to be compiled. */
 
-    [SOURCE, URL] = [configuration.source, configuration.url ?? "<source>"];
-
     SECTIONS = [
         new NameSection(0),
         new TypeSection(1),
@@ -2175,7 +2173,7 @@ const reset = function(configuration) {
         new DataCountSection(12)
     ];
 
-    INDEXSPACES = {};
+    [URL, INDEXSPACES] = [configuration.url, {}];
 
     INDEXSPACES.components = {
         register: [], function: [], type: [],
