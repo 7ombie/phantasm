@@ -3,7 +3,7 @@
 This module implements the PHANTASM parser, exporting a function named `parse`
 as the default export and entrypoint to the parser. */
 
-import { not, stack } from "/assembler/helpers.js";
+import { not, stack, put } from "/assembler/helpers.js";
 
 import {
     lex, format, encodeUTF8, PhantasmError, Node, Token, Component,
@@ -504,20 +504,15 @@ class BoundsError extends ParserError {
 
     /* Thrown on an integer that is outside its expected range. */
 
-    constructor(literal, direction, width, signed) {
+    constructor(literal, problem, expected) {
 
         /* The `literal` argument is the offending `NumberLiteral` instance.
-        The `direction` argument (a string) describes the literal as being too
-        "high" or "low". The `width` argument is the expected width (8, 16, 32
-        or 64, in practice). The `signed` argument is a bool that is `true`
-        for signed integers, and `false` for unsigned. */
+        The `problem` argument (a string) describes the literal as being too
+        "high" or "low". The `expected` argument describes the target value. */
 
-        const bits = " " + width + "-bit ";
-        const type = (signed ? "a signed" : "an unsigned") + bits + "integer";
+        const template = `The value {0.V} is too ${problem} (for ${expected}).`;
 
-        const template = `The value {0.V} is too ${direction} (for ${type}).`;
-
-        super(format(template, literal, signed ? "signed" : "unsigned"));
+        super(format(template, literal));
     }
 }
 
@@ -1016,8 +1011,7 @@ class ComponentSpecifier extends ComponentDescriptor {
 
 class ComponentReference extends ComponentDescriptor {
 
-    /* An abstract base class for all component references, which are used in
-    all export-statements. */
+    /* An abstract base class for component references. */
 
     constructor(identity, name, location) {
 
@@ -1197,8 +1191,16 @@ export class MemoryDefinition extends ComponentDefinition {
             this.bank = false;
         }
 
-        this.min = boundscheck(min);
-        this.max = boundscheck(max);
+        for (const limit of [min, max]) if (limit !== undefined) {
+
+            const value = evaluateLiteral(limit);
+
+            if (value < 0) throw new BoundsError(limit, "low", "a page limit");
+            else if (value > 65536) throw new BoundsError(limit, "high", "a page limit");
+        }
+
+        this.min = min;
+        this.max = max;
     };
 }
 
@@ -1317,8 +1319,8 @@ export class MemorySpecifier extends ComponentSpecifier {
         const [min, max] = qualifier ? requireFullLimits() : requireLimits();
 
         this.name = "memory";
-        this.min = boundscheck(min);
-        this.max = boundscheck(max);
+        this.min = boundscheck(min, 16);
+        this.max = boundscheck(max, 16);
         this.shared = qualifier;
     }
 }
@@ -2026,9 +2028,10 @@ const boundscheck = function(identity, width=32, signed=false) {
 
     if (number < lower || number > upper) {
 
-        const issue = number < lower  ? "low" : "high";
+        const problem = number < lower ? "low" : "high";
+        const expected = `${width}-bit ${signed ? "" : "un" }signed integer`;
 
-        throw new BoundsError(identity, issue, width, signed);
+        throw new BoundsError(identity, problem, expected);
 
     } else return identity;
 };

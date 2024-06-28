@@ -18,12 +18,12 @@ define memory bank
 define function $f of type 0
 
     copy memory bank 0 to $data
-    push f64 9_000_000
+    push i32 #FFFF_FFFF
     crash
 
 import "init" as initializer
 
-define memory $data with 1
+define memory $data with #10000
 
     @segment as push i32 #100
     i8 255
