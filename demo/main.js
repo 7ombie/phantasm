@@ -9,6 +9,8 @@ define pointer table $opcodes with 100 as pointer $f      | $opcodes: pointer ta
 define variable i32 with 10
 define constant pointer $pointer with $f
 
+define reference table with 10
+
 define memory bank
 
     utf8 "hello", u8 1, 2, 3, u32 1

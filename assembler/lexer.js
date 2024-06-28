@@ -9,14 +9,14 @@ import { not, iife, stack } from "/assembler/helpers.js";
 
 let URL;            // used to store the url for the source file
 let SOURCE;         // used to store the source string
-let INDEX;          // the current character index
+let INDEX;          // the current character index (0-indexed)
 let CHARACTER;      // the current character
 let TOKEN_STRING;   // used to build up token strings
-let TOKEN_LINE;     // 1-indexed line number for start of token
-let TOKEN_COLUMN;   // 1-indexed column number for start of token
+let TOKEN_LINE;     // current token line number (1-indexed)
+let TOKEN_COLUMN;   // current token column number (1-indexed)
 let LINE_NUMBER;    // current line number (1-indexed)
-let LINE_OFFSET;    // the index of the first character of the current line
-let INDENT_LEVEL;   // the current level of indentation
+let LINE_OFFSET;    // index of first character of current line (0-indexed)
+let INDENT_LEVEL;   // the current level of indentation (0 is onside)
 let LAST_TOKEN;     // tracks which type of token was last to be yielded
 
 /* --{ A BUNCH OF USEFUL CONSTANTS }---------------------------------------- */
@@ -53,7 +53,7 @@ const components = [
 ];
 
 const qualifiers = [
-    "pointer", "proxy", "mixed", "global", "local", "left", "right",
+    "pointer", "proxy", "reference", "global", "local", "left", "right",
     "shared", "atomic"
 ];
 

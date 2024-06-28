@@ -25,7 +25,7 @@ let CURRENT_TOKEN;   // the current `Token` instance
 let NEXT_TOKEN;      // the next `Token` instance
 let FUTURE_TOKEN;    // the `Token` instance after the next `Token` instance
 let GLOBAL_CONTEXT;  // tracks whether the context is global or not (local)
-let START;           // tracks whether a start function has been defined yet
+let INITIALIZER;     // tracks whether an initializer has been defined yet
 
 /* --{ USEFUL STRING CONSTANTS }-------------------------------------------- */
 
@@ -36,7 +36,7 @@ const [u64, s64, i64] = ["u64", "s64", "i64"];
 const [f32, f64, utf8] = ["f32", "f64", "utf8"];
 
 const [shared, atomic] = ["shared", "atomic"];
-const [pointer, proxy, mixed] = ["pointer", "proxy", "mixed"];
+const [pointer, proxy, reference] = ["pointer", "proxy", "reference"];
 const [global, local, left, right] = ["global", "local", "left", "right"];
 
 /* --{ THE PARSER ERROR CLASSES }------------------------------------------- */
@@ -460,13 +460,13 @@ class UnqualifiedTableError extends ParserError {
 
     constructor() {
 
-        super("Tables must be qualified (`mixed`, `pointer` or `proxy`).");
+        super("Tables must be qualified (`reference`, `pointer` or `proxy`).");
     }
 }
 
 class UnexpectedPrimerError extends ParserError {
 
-    /* Thrown when a proxy or mixed table includes a primer (which is not
+    /* Thrown when a proxy or reference table includes a primer (which is not
     currently permitted by the WebAssembly Specification). */
 
     constructor(qualifier) {
@@ -1149,12 +1149,12 @@ export class FunctionDefinition extends ComponentDefinition {
 
     constructor(location) {
 
-        const [start, identifier, type] = requireFunctionSpecifier();
+        const [initializer, identifier, type] = requireFunctionSpecifier();
 
         super(location);
         this.name = "function";
         this.identifier = identifier;
-        this.start = start;
+        this.initializer = initializer;
         this.type = type;
         this.locals = [];
         this.block = [];
@@ -1294,11 +1294,11 @@ export class FunctionSpecifier extends ComponentSpecifier {
 
     constructor(location) {
 
-        const [start, identifier, type] = requireFunctionSpecifier();
+        const [initializer, identifier, type] = requireFunctionSpecifier();
 
         super(identifier, location);
         this.name = "function";
-        this.start = start;
+        this.initializer = initializer;
         this.type = type;
     }
 }
@@ -2376,12 +2376,12 @@ const requireOptionalIdentity = function(location) {
 
 const requireTableQualifier = function() {
 
-    /* Require a table qualifier (one of `pointer`, `proxy` or `mixed`), and
+    /* Require a table qualifier (one of `pointer`, `proxy` or `reference`), and
     return it, complaining otherwise. */
 
     const qualifier = require(Qualifier);
 
-    if ([mixed, pointer, proxy].includes(qualifier.value)) return qualifier;
+    if ([reference, pointer, proxy].includes(qualifier.value)) return qualifier;
     else throw new InvalidTableQualifierError(qualifier);
 };
 
@@ -2601,29 +2601,31 @@ const requireIndentedBlock = function(parent, expression=false) {
 
 const requireFunctionSpecifier = function() {
 
-    /* Require a function specifier, then return its start flag, any bound
-    identifier (or `undefined`), and the function type, as a three element
-    array: [start, identifier, type]. The function also checks and updates
-    the global `START` boolean as required, and throws an exception if the
-    current module defines more than one start function. */
+    /* Require a function specifier, then return its `initializer` flag, any
+    bound identifier (or `undefined`), and the function type, as a three
+    element array: `[initializer, identifier, type]`.
+
+    The function also checks and updates the global `INITIALIZER` boolean as
+    required, and throws an exception if the current module defines more
+    than one initializer. */
 
     if (acceptKeyword("initializer")) {
 
-        if (START) throw new MultipleInitializersError(location);
-        else START = true;
+        if (INITIALIZER) throw new MultipleInitializersError(location);
+        else INITIALIZER = true;
 
-        var start = true;
+        var initializer = true;
     
-    } else var start = false;
+    } else var initializer = false;
 
     if (acceptComponent("function")) var identifier = accept(Identifier);
-    else if (start) var identifier = accept(Identifier);
+    else if (initializer) var identifier = accept(Identifier);
     else var identifier = require(Identifier);
 
     if (acceptKeyword("of")) var type = requireType(false);
     else var type = new TypeExpression([], [], CURRENT_TOKEN.location);
 
-    return [start, identifier, type];
+    return [initializer, identifier, type];
 };
 
 const requireMemoryElement = function(push, context, newline) {
@@ -2676,10 +2678,10 @@ const requirePrimer = function(name, bank) {
     /* This helper is called on the `@seg` directive. It gathers a primer for
     a memory or table, ensuring that each element specifies its type (either
     directly or inherited from a previous element), then retuns it. The first
-    arg (`name`) is the string "memory" or "pointer" ("mixed" and "proxy" may
-    be supported later, if the specification supports primers for those table
-    types). The argument `bank` is a bool that indicates whether the primer
-    belongs to a bank or not. */
+    arg (`name`) is the string "memory" or "pointer" ("reference" and "proxy"
+    may be supported later, if the specification supports primers for those
+    table types). The argument `bank` is a bool that indicates whether the
+    primer belongs to a bank or not. */
 
     const push = item => segment.push(item);
 
@@ -2770,7 +2772,7 @@ const nameNextComponent = function(description) {
 
         return "memory";
 
-    } else if (at(Qualifier) && [mixed, pointer, proxy].includes(value)) {
+    } else if (at(Qualifier) && [reference, pointer, proxy].includes(value)) {
 
         return "table";
 
@@ -2804,7 +2806,7 @@ export const parse = function * (configuration) {
 
     [URL, TOKENS] = [configuration.url, lex(configuration)];
     [CURRENT_TOKEN, NEXT_TOKEN] = [undefined, undefined];
-    [GLOBAL_CONTEXT, START] = [true, false];
+    [GLOBAL_CONTEXT, INITIALIZER] = [true, false];
 
     advance(); advance(); // initialize the current, next and future token
 

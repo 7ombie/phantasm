@@ -42,7 +42,7 @@ const opcodes = {
 const encodings = {
     function: 0x00, table: 0x01, memory: 0x02, register: 0x03,
     i32: 0x7F, i64: 0x7E, f32: 0x7D, f64: 0x7C,
-    pointer: 0x70, proxy: 0x6F, mixed: 0x6E,
+    pointer: 0x70, proxy: 0x6F, reference: 0x6E,
     type: 0x60, empty: 0x40, end: 0x0B
 };
 
@@ -628,7 +628,7 @@ class ImportSection extends VectorSection {
 
         this.push(0x00, ...ULEB128(SECTIONS[1].resolveType(component)));
 
-        if (component.start) SECTIONS[8].payload = component.index;
+        if (component.initializer) SECTIONS[8].payload = component.index;
     }
 
     push_table(statement) {
@@ -1751,7 +1751,7 @@ class CodeSection extends VectorSection {
         this.locals = {};               // reset the hash of local identifiers
         this.index = component.index;   // update the function index
 
-        if (component.start) SECTIONS[8].payload = this.index;
+        if (component.initializer) SECTIONS[8].payload = this.index;
 
         // handle the type reference or expression (whichever is present), and
         // then handle any `local` directives (encoding them, and noting any
