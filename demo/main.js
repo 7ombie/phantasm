@@ -9,11 +9,11 @@ define pointer table $opcodes with 100 as pointer $f      | $opcodes: pointer ta
 define variable i32 with 10
 define constant pointer $pointer with $f
 
-define reference table with 10
+define pointer table with 10
 
 define memory bank
 
-    utf8 "hello", u8 1, 2, 3, u32 1
+    utf8 "hello", i8 1, 2, 3, i32 1
 
 define function $f of type 0
 
@@ -26,10 +26,10 @@ import "init" as initializer
 define memory $data with 1
 
     @segment as push i32 #100
-    u8 255
+    i8 255
 
     @segment at 200
-    u8 250, utf8 " foobar !! "
+    i8 250, utf8 " foobar !! "
 
 define function $func as invoke type 0 in $opcodes
 define type $t as i32 -> i64                              | (explicit) type 0

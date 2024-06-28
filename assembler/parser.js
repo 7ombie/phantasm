@@ -1,9 +1,9 @@
 /* --{ THE PHANTASM PARSER }--{ /assembler/parser.js }----------------------- *
 
-This module implements the PHANTASM parser, exporting a function named
-`parse` as an entrypoint. */
+This module implements the PHANTASM parser, exporting a function named `parse`
+as the default export and entrypoint to the parser. */
 
-import { not, iife, stack } from "/assembler/helpers.js";
+import { not, stack } from "/assembler/helpers.js";
 
 import {
     lex, format, encodeUTF8, PhantasmError, Node, Token, Component,
@@ -424,10 +424,10 @@ class EmptySegmentError extends ParserError {
 
     constructor(token) {
 
-        /* The `token` argument is the `@seg` directive instance. It is used
-        to point the user to the beginning of the segment, which the parser
-        is beyond (having parsed the block of instructions) by the time
-        this error is discovered. */
+        /* The `token` argument is the `@segment` directive instance. It is
+        used to point the user to the beginning of the segment, which the
+        parser is beyond (having parsed the block of instructions) by
+        the time this error is discovered. */
 
         const options = token.location;
 
@@ -1455,8 +1455,8 @@ export class MemoryElement extends Node {
 
     constructor(type, explicit, value) {
 
-        const integers = [u8, u16, u32, u64];
-        const lengths = {u8: 1, u16: 2, u32: 4, u64: 8, f32: 4, f64: 8};
+        const integers = [i8, i16, i32, i64];
+        const lengths = {i8: 1, i16: 2, i32: 4, i64: 8, f32: 4, f64: 8};
 
         super(explicit ? type.location : value.location);
         this.length = lengths[type.value] || encodeUTF8(value.value).length;
@@ -2258,13 +2258,10 @@ const requireReftype = function() {
 
 const acceptEncoding = function() {
 
-    /* Accept any primitive type token that is a valid encoding for memory
-    primers, then return it, else return `undefined`. */
+    /* Accept any primitive type token that is a valid datatype for memory primers,
+    then return it, else return `undefined`. */
 
-    if (evaluate(NEXT_TOKEN, u8, u16, u32, u64, f32, f64, utf8)) {
-
-        return advance();
-    }
+    if (evaluate(NEXT_TOKEN, i8, i16, i32, i64, f32, f64, utf8)) return advance();
 };
 
 const requireGivenType = function(description, ...names) {
@@ -2675,8 +2672,8 @@ const requireTableElement = function(push, context, newline) {
 
 const requirePrimer = function(name, bank) {
 
-    /* This helper is called on the `@seg` directive. It gathers a primer for
-    a memory or table, ensuring that each element specifies its type (either
+    /* This helper is called on the `@segment` directive. It gathers a primer
+    for a memory or table, ensuring that each element specifies its type (either
     directly or inherited from a previous element), then retuns it. The first
     arg (`name`) is the string "memory" or "pointer" ("reference" and "proxy"
     may be supported later, if the specification supports primers for those
@@ -2698,7 +2695,7 @@ const requirePrimer = function(name, bank) {
 
         if (not(on(Comma)) && atToken(Directive, "segment")) {
 
-            advance(); // skip the `@seg` directive
+            advance(); // skip the `@segment` directive
 
             if (inline) throw new UnexpectedInlineBlockError(advance());
             else if (bank) throw new SegmentedBankError();

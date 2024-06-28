@@ -1,7 +1,7 @@
 /* --{ THE PHANTASM LEXER }--{ /assembler/lexer.js }------------------------- *
 
-This module implements the PHANTASM lexer, exporting a function named
-`lex` as an entrypoint. */
+This module implements the PHANTASM lexer, exporting a function named `lex` as
+the default export and entrypoint to the lexer. */
 
 import { not, iife, stack } from "/assembler/helpers.js";
 

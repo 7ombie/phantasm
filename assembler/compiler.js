@@ -1,24 +1,20 @@
 /* --{ THE PHANTASM COMPILER }--{ /assembler/compiler.js }------------------- *
 
-This module implements the PHANTASM compiler, exporting a function named
-`compile` as an entrypoint. */
+This module implements the PHANTASM compiler. It exports a function named
+`compile` as the default export and entrypoint to the compiler, and to the
+entire assembler. */
 
-import { not, iife, stack } from "/assembler/helpers.js";
+import { not, stack, put } from "/assembler/helpers.js";
 
 import {
-    format, encodeUTF8, Node, Identifier, Keyword, NumberLiteral,
+    format, encodeUTF8, Identifier, Keyword, NumberLiteral,
     Primitive, Void, PhantasmError
 } from "/assembler/lexer.js";
 
 import {
     parse, evaluateLiteral,
-    Instruction, BlockInstruction,
-    TypeReference, TypeExpression, TypeDefinition,
-    DefineStatement, ImportStatement, ExportStatement,
-    ParamElement, SegmentElement, MemoryElement, TableElement,
-    RegisterReference, FunctionReference, MemoryReference, TableReference,
-    RegisterSpecifier, FunctionSpecifier, MemorySpecifier, TableSpecifier,
-    RegisterDefinition, FunctionDefinition, MemoryDefinition, TableDefinition
+    Instruction, TypeExpression, TypeDefinition,
+    ImportStatement, ExportStatement, SegmentElement
 } from "/assembler/parser.js";
 
 /* --{ THE GLOBAL COMPILER STATE }------------------------------------------ */
@@ -47,7 +43,7 @@ const encodings = {
 };
 
 const views = {
-    u8: Uint8Array, u16: Uint16Array, u32: Uint32Array, u64: BigInt64Array,
+    i8: Uint8Array, i16: Uint16Array, i32: Uint32Array, i64: BigInt64Array,
     f32: Float32Array, f64: Float64Array,
 };
 
@@ -243,11 +239,11 @@ class Segment {
 
     get payload() {
 
-        /* This computed attribute evaluates to an array containing all of
-        the elements in the segment (excluding the initial @seg directive,
-        when present). The elements are still represented as abstract nodes
-        (not as bytes) at this point, ready to be encoded by the appropriate
-        `encode` method (`DataSection.encode` or `ElementSection.encode`). */
+        /* This computed attribute evaluates to an array containing all of the
+        elements in the segment (excluding the initial @segment directive, when
+        present). The elements are still represented as abstract nodes (not as
+        bytes) at this point, ready to be encoded by the appropriate `encode`
+        method (`DataSection.encode` or `ElementSection.encode`). */
 
         return this.elements.slice(1 * this.explicit);
     }
@@ -1862,6 +1858,12 @@ class DataSection extends VectorSection {
 
         if (type.value === "utf8") return Array.from(encodeUTF8(value.value));
 
+        // create a raw buffer with enough bytes to hold the number, evaluate the
+        // literal, then write it to the buffer, using a temporary typed-array of
+        // whichever type corresponds to the element datatype - then, copy all of
+        // the individual bytes from the buffer to a regular JS array of `Number`
+        // values, so it can be flattened later...
+ 
         const buffer = new ArrayBuffer(length);
 
         new views[type.value](buffer)[0] = evaluateLiteral(value);
