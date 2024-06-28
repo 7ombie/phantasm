@@ -732,7 +732,7 @@ class Else extends BlockInstruction {
 
     /* This is a concrete class for the else-block that optionally follows any
     branch-block. The class inherits everything it needs from its parents, and
-    the `parse method of `BlockInstruction` will invoke `requireIndentedBlock`
+    the `parse` method of `BlockInstruction` will invoke `requireIndentedBlock`
     on any instance of `Else`, as soon it is instantiated, so there is nothing
     to do here, except prevent the `BlockInstruction.parse` method from being
     inherited (else it would be indirectly invoked again, recursively). */
