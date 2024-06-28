@@ -102,14 +102,14 @@ class ScopeError extends ParserError {
     }
 }
 
-class MultipleStartFunctionsError extends ParserError {
+class MultipleInitializersError extends ParserError {
 
-    /* Thrown when the user attempts to define multiple start functions. */
+    /* Thrown when the user attempts to define multiple init functions. */
 
     constructor(location) {
 
         super({
-            text: "Cannot define multiple start functions.",
+            text: "Cannot define multiple initializer functions.",
             line: location.line, column: location.column
         });
     }
@@ -2607,9 +2607,9 @@ const requireFunctionSpecifier = function() {
     the global `START` boolean as required, and throws an exception if the
     current module defines more than one start function. */
 
-    if (acceptKeyword("start")) {
+    if (acceptKeyword("initializer")) {
 
-        if (START) throw new MultipleStartFunctionsError(location);
+        if (START) throw new MultipleInitializersError(location);
         else START = true;
 
         var start = true;
@@ -2758,7 +2758,7 @@ const nameNextComponent = function(description) {
 
         return "function";
 
-    } else if (atToken(Keyword, "start") || atToken(Component, "function")) {
+    } else if (atToken(Keyword, "initializer") || atToken(Component, "function")) {
 
         return "function";
 

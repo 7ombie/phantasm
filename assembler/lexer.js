@@ -34,18 +34,10 @@ const ellipsis = "...";
 
 const [parens, brackets, braces] = ["()", "[]", "{}"];
 
-const lowers = "abcdefghijklmnopqrstuvwxyz";
-const uppers = lowers.toUpperCase();
-const alphas = lowers + uppers;
-
 const decimals = "0123456789";
 const encloser = parens + brackets + braces;
 const specials = encloser + comma + semicolon + space + newline;
 const numerics = plus + minus + hash + decimals;
-
-const signs = plus + minus;
-const alphanumerics = alphas + decimals;
-const hexadecimals = decimals + "ABCDEF";
 
 const constants = [
     "Infinity", "+Infinity", "-Infinity", "NaN"
@@ -70,7 +62,7 @@ const directives = [
 ]
 
 const keywords = [
-    "define", "import", "export", "type", "prime", "plus", "null", "start",
+    "define", "import", "export", "type", "prime", "plus", "null", "initializer",
     "sop", "of", "with", "to", "zero", "equal", "less", "more", "bank",
     "at", "sop", "in", "as", "from"
 ];
@@ -85,10 +77,6 @@ const operations = [
     "lop", "convert", "bitcast", "notify", "broker", "ctz", "clz", "nsa",
     "call", "neg", "wait"
 ];
-
-const words = (
-    primitives + components + qualifiers + directives + keywords + operations
-);
 
 const escapees = {
 

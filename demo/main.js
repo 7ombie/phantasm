@@ -19,6 +19,8 @@ define function $f of type 0
     push f64 9_000_000
     crash
 
+import "init" as initializer
+
 define memory $data with 1
 
     @segment as push i32 #100
