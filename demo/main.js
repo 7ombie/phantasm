@@ -4,9 +4,6 @@ import { put } from "../assembler/helpers.js";
 import WabtModule from "./wabt.js";
 
 const source = `
-| asm define constant i32 $n with 10
-| asm define memory with 1 as utf8 "spam and eggs"
-
 import "foo" from "module" as $foo of i32 -> f64          | (implicit) type 1 (hidden)
 define pointer table $opcodes with 100 as pointer $f      | $opcodes: pointer table
 define variable i32 with 10
@@ -14,10 +11,7 @@ define constant pointer $pointer with $f
 
 define memory bank
 
-    utf8 "hello"
-    u8 1 | asm as i32.const 10, get global $n, add i32
-
-    u32 1 | asm in 1 as push 0, push 13
+    utf8 "hello", u8 1, 2, 3, u32 1
 
 define function $f of type 0
 

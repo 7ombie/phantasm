@@ -15,7 +15,7 @@ let TOKEN_STRING;   // used to build up token strings
 let TOKEN_LINE;     // 1-indexed line number for start of token
 let TOKEN_COLUMN;   // 1-indexed column number for start of token
 let LINE_NUMBER;    // current line number (1-indexed)
-let LINE_HEAD;      // the index of the first character in the current line
+let LINE_OFFSET;    // the index of the first character of the current line
 let INDENT_LEVEL;   // the current level of indentation
 let LAST_TOKEN;     // tracks which type of token was last to be yielded
 
@@ -543,7 +543,7 @@ const advanceLine = function() {
     /* This function updates the lexer state so it is ready to begin a
     new line. */
 
-    LINE_HEAD = INDEX;
+    LINE_OFFSET = INDEX;
     LINE_NUMBER++;
 };
 
@@ -553,7 +553,7 @@ const advanceToken = function() {
     new token. */
 
     TOKEN_LINE = LINE_NUMBER;
-    TOKEN_COLUMN = INDEX - LINE_HEAD;
+    TOKEN_COLUMN = INDEX - LINE_OFFSET;
     TOKEN_STRING = CHARACTER;
 };
 
@@ -857,18 +857,6 @@ const measureIndentation = function() {
     else return spaces / 4;
 };
 
-const reset = function(configuration) {
-
-    /* This is the generic reset helper for this module. It resets the lexer
-    state, ready for a new source file. */
-
-    [URL, SOURCE] = [configuration.url, configuration.source];
-    [INDENT_LEVEL, INDEX, CHARACTER] = [0, -1, ""];
-    [TOKEN_STRING, LAST_TOKEN] = ["", undefined];
-    [TOKEN_LINE, TOKEN_COLUMN] = [1, 1];
-    [LINE_NUMBER, LINE_HEAD] = [1, -1];
-};
-
 /* --{ THE LEXER ENTRYPOINT }----------------------------------------------- */
 
 export const lex = function * (configuration) {
@@ -877,7 +865,11 @@ export const lex = function * (configuration) {
     configuration hash, and yields the tokens of the given source one by
     one, assuming no error is raised in the process. */
 
-    reset(configuration);
+    [URL, SOURCE] = [configuration.url, configuration.source];
+    [INDENT_LEVEL, INDEX, CHARACTER] = [0, -1, ""];
+    [TOKEN_STRING, LAST_TOKEN] = ["", undefined];
+    [TOKEN_LINE, TOKEN_COLUMN] = [1, 1];
+    [LINE_NUMBER, LINE_OFFSET] = [1, -1];
 
     while (advance()) {
 

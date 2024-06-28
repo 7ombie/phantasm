@@ -27,6 +27,8 @@ let URL, INDEXSPACES, SECTIONS;
 
 /* --{ USEFUL GLOBAL CONSTANTS }-------------------------------------------- */
 
+const hoistedTypes = ["memorybank", "tablebank", "type"];
+
 const header = [
     0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00
 ];
@@ -2152,40 +2154,6 @@ const resolveIdentity = function(type, identity) {
     } else return resolveIdentifier(type, identity);
 }
 
-const reset = function(configuration) {
-
-    /* This is the generic reset helper for this module. It resets the
-    compiler state, ready for a new source file to be compiled. */
-
-    SECTIONS = [
-        new NameSection(0),
-        new TypeSection(1),
-        new ImportSection(2),
-        new FunctionSection(3),
-        new TableSection(4),
-        new MemorySection(5),
-        new GlobalSection(6),
-        new ExportSection(7),
-        new StartSection(8),
-        new ElementSection(9),
-        new CodeSection(10),
-        new DataSection(11),
-        new DataCountSection(12)
-    ];
-
-    [URL, INDEXSPACES] = [configuration.url, {}];
-
-    INDEXSPACES.components = {
-        register: [], function: [], type: [],
-        memory: [], table: [], memorybank: [], tablebank: [],
-    };
-
-    INDEXSPACES.identifiers = {
-        register: {}, function: {}, type: {},
-        memory: {}, table: {}, memorybank: {}, tablebank: {},
-    };
-};
-
 /* --{ THE NUMERIC ENCODERS }----------------------------------------------- */
 
 const ULEB128 = stack(function(push, pop, input) {
@@ -2274,12 +2242,37 @@ export const compile = function * (configuration) {
     above other kinds of statement, effectively giving memory banks, table
     banks and function types their own indexspaces. */
 
-    const first = statement => firsts.includes(statement.component.name);
+    const first = statement => hoistedTypes.includes(statement.component.name);
     const second = statement => not(first(statement));
 
-    reset(configuration);
+    SECTIONS = [
+        new NameSection(0),
+        new TypeSection(1),
+        new ImportSection(2),
+        new FunctionSection(3),
+        new TableSection(4),
+        new MemorySection(5),
+        new GlobalSection(6),
+        new ExportSection(7),
+        new StartSection(8),
+        new ElementSection(9),
+        new CodeSection(10),
+        new DataSection(11),
+        new DataCountSection(12)
+    ];
 
-    const firsts = ["memorybank", "tablebank", "type"];
+    [URL, INDEXSPACES] = [configuration.url, {}];
+
+    INDEXSPACES.components = {
+        register: [], function: [], type: [],
+        memory: [], table: [], memorybank: [], tablebank: [],
+    };
+
+    INDEXSPACES.identifiers = {
+        register: {}, function: {}, type: {},
+        memory: {}, table: {}, memorybank: {}, tablebank: {},
+    };
+
     const statements = Array.from(parse(configuration));
 
     // firstly, hoist all of the bank and type definitions...

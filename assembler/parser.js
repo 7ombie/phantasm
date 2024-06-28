@@ -1675,58 +1675,40 @@ instructions.invoke = class INVOKE extends Instruction {
 
 instructions.is = class IS extends Instruction {
 
-    /* This class implements the `is` mnemonic, which is used for `is equal`,
-    `is more`, `is less`, `is null` and `is zero` PHANTASM instructions. */
+    /* This class implements the `is` mnemonic, which is used for `is equal`, `is more`,
+    `is less`, `is null` and `is zero` PHANTASM instructions. */
 
     parse() {
 
         this.test = require(Keyword);
 
-        if (evaluate(this.test, "null")) {
-
-            this.type = undefined;
-
-        } else if (evaluate(this.test, "equal")) {
-
-            this.type = requireNumtype();
-
-        } else if (evaluate(this.test, "zero")) {
-
-            this.type = requireIntegerNumtype();
-
-        } else if (evaluate(this.test, "more", "less")) {
-
-            this.type = requireGnosticNumtype();
-
-        } else throw new InvalidTestError(this);
+        if (evaluate(this.test, "null")) this.type = undefined;
+        else if (evaluate(this.test, "equal")) this.type = requireNumtype();
+        else if (evaluate(this.test, "zero")) this.type = requireIntegerNumtype();
+        else if (evaluate(this.test, "more", "less")) this.type = requireGnosticNumtype();
+        else throw new InvalidTestError(this);
     }
 }
 
 instructions.not = class NOT extends Instruction {
 
-    /* This class implements the `not` mnemonic, which is used for the
-    `not equal`, `not more` and `not less` PHANTASM instructions. */
+    /* This class implements the `not` mnemonic, which is used for the `not equal`,
+    `not more` and `not less` PHANTASM instructions. */
 
     parse() {
 
         this.test = require(Keyword);
 
-        if (evaluate(this.test, "equal")) {
-
-            this.type = requireNumtype();
-
-        } else if (evaluate(this.test, "more", "less")) {
-
-            this.type = requireGnosticNumtype();
-
-        } else throw new InvalidTestError(this);
+        if (evaluate(this.test, "equal")) this.type = requireNumtype();
+        else if (evaluate(this.test, "more", "less")) this.type = requireGnosticNumtype();
+        else throw new InvalidTestError(this);
     }
 }
 
 instructions.drop = class DROP extends Instruction {
 
-    /* This class implements the `drop` mnemonic, which is used for the WAT
-    `drop`, `data.drop` and `elem.drop` instructions. */
+    /* This class implements the `drop` mnemonic, which is used for the WAT `drop`,
+    `data.drop` and `elem.drop` instructions. */
 
     parse() {
 
@@ -1863,11 +1845,8 @@ instructions.atomic.store = class ATOMIC_STORE extends MemoryInstruction {
 
         if (acceptKeyword("as")) {
 
-            if (evaluate(this.type, i64)) {
-
-                this.datatype = requireDatatype();
-
-            } else this.datatype = requireLesserDatatype();
+            if (evaluate(this.type, i64)) this.datatype = requireDatatype();
+            else this.datatype = requireLesserDatatype();
 
         } else this.datatype = undefined;
 
@@ -1963,15 +1942,9 @@ export const evaluateLiteral = function(token, integerMode=false) {
 
     // return typechecked arg,if it is constant (`Infinity`, `NaN` etc)...
 
-    if (["Infinity", "+Infinity"].includes(token.value)) {
-
-        return typecheck(Infinity);
-
-    } else if (token.value === "-Infinity") {
-
-        return typecheck(-Infinity);
-
-    } else if (token.value === "NaN") return typecheck(NaN);
+    if (["Infinity", "+Infinity"].includes(token.value)) return typecheck(Infinity);
+    else if (token.value === "-Infinity") return typecheck(-Infinity);
+    else if (token.value === "NaN") return typecheck(NaN);
 
     // otherwise, handle a regular literal (expressed using digits)...
 
@@ -2821,17 +2794,6 @@ const nameInstruction = function(instruction, full=false) {
     return instruction.constructor.name.toLowerCase() + suffix;
 };
 
-const reset = function(configuration) {
-
-    /* This is the generic reset helper for this module. It resets
-    the parser state, ready for a new source. */
-
-    URL = configuration.url;
-    TOKENS = lex(configuration);
-    [CURRENT_TOKEN, NEXT_TOKEN] = [undefined, undefined];
-    [GLOBAL_CONTEXT, START] = [true, false];
-};
-
 /* --{ THE PARSER ENTRYPOINT }---------------------------------------------- */
 
 export const parse = function * (configuration) {
@@ -2840,7 +2802,10 @@ export const parse = function * (configuration) {
     a configuration hash, parses the given source into an AST, and yields
     the nodes of the result, statement-wise. */
 
-    reset(configuration);
+    [URL, TOKENS] = [configuration.url, lex(configuration)];
+    [CURRENT_TOKEN, NEXT_TOKEN] = [undefined, undefined];
+    [GLOBAL_CONTEXT, START] = [true, false];
+
     advance(); advance(); // initialize the current, next and future token
 
     while (require(Keyword, Terminator, EOF) && not(on(EOF))) {
