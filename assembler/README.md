@@ -32,6 +32,6 @@ JavaScript (probably Swift, maybe Odin or Zig).
 
 The current plan is to add more features to the current codebase, use the project
 for a couple of games, and build out the ecosystem a bit (like supporting popular
-editors, and providing tutorials and an online playground *et cetera*). Then,
-when the design is effectively complete (WebAssembly can only really evolve
-so far), I will consider reimplementing the language professionally.
+editors, providing tutorials *et cetera*). Then, when the design is effectively
+complete (WebAssembly can only really evolve so far), I will then consider
+reimplementing the language professionally.
