@@ -1856,8 +1856,6 @@ class DataSection extends VectorSection {
 
         const {type, value, length} = element;
 
-        if (type.value === "utf8") return Array.from(encodeUTF8(value.value));
-
         // create a raw buffer with enough bytes to hold the number, evaluate the
         // literal, then write it to the buffer, using a temporary typed-array of
         // whichever type corresponds to the element datatype - then, copy all of

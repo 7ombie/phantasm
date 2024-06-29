@@ -13,7 +13,7 @@ define pointer table with 10
 
 define memory bank
 
-    utf8 "hello", i8 1, 2, 3, i32 1
+    i8 1, 2, 3, i32 1
 
 define function $f of type 0
 
@@ -30,7 +30,7 @@ define memory $data with #10000
     | assemble i32 to i8
 
     @segment at 200
-    i8 250, utf8 " foobar !! "
+    i8 250
 
 define function $func as invoke type 0 in $opcodes
 define type $t as i32 -> i64                              | (explicit) type 0

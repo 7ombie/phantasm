@@ -33,7 +33,7 @@ const [u8, s8, i8] = ["u8", "s8", "i8"];
 const [u16, s16, i16] = ["u16", "s16", "i16"];
 const [u32, s32, i32] = ["u32", "s32", "i32"];
 const [u64, s64, i64] = ["u64", "s64", "i64"];
-const [f32, f64, utf8] = ["f32", "f64", "utf8"];
+const [f32, f64] = ["f32", "f64"];
 
 const [shared, atomic] = ["shared", "atomic"];
 const [pointer, proxy, reference] = ["pointer", "proxy", "reference"];
@@ -2269,7 +2269,7 @@ const acceptEncoding = function() {
     /* Accept any primitive type token that is a valid datatype for memory primers,
     then return it, else return `undefined`. */
 
-    if (evaluate(NEXT_TOKEN, i8, i16, i32, i64, f32, f64, utf8)) return advance();
+    if (evaluate(NEXT_TOKEN, i8, i16, i32, i64, f32, f64)) return advance();
 };
 
 const requireGivenType = function(description, ...names) {
@@ -2646,11 +2646,7 @@ const requireMemoryElement = function(push, context, newline) {
 
     if (not(context)) throw new UnspecifiedElementError("memory");
 
-    if (context.value === "utf8") {
-
-        push(new MemoryElement(context, type, require(StringLiteral)));
-
-    } else push(new MemoryElement(context, type, require(NumberLiteral)));
+    push(new MemoryElement(context, type, require(NumberLiteral)));
 
     return context;
 };
