@@ -26,7 +26,8 @@ import "init" as initializer
 define memory $data with #10000
 
     @segment as push i32 #100
-    i8 255
+    i8 -1
+    | assemble i32 to i8
 
     @segment at 200
     i8 250, utf8 " foobar !! "

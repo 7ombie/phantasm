@@ -3,7 +3,7 @@
 This module implements the PHANTASM parser, exporting a function named `parse`
 as the default export and entrypoint to the parser. */
 
-import { not, stack, put } from "/assembler/helpers.js";
+import { not, stack, tertiary, put } from "/assembler/helpers.js";
 
 import {
     lex, format, encodeUTF8, PhantasmError, Node, Token, Component,
@@ -1191,16 +1191,8 @@ export class MemoryDefinition extends ComponentDefinition {
             this.bank = false;
         }
 
-        for (const limit of [min, max]) if (limit !== undefined) {
-
-            const value = evaluateLiteral(limit);
-
-            if (value < 0) throw new BoundsError(limit, "low", "a page limit");
-            else if (value > 65536) throw new BoundsError(limit, "high", "a page limit");
-        }
-
-        this.min = min;
-        this.max = max;
+        this.min = boundscheckMemoryLimit(min);
+        this.max = boundscheckMemoryLimit(max);
     };
 }
 
@@ -1319,9 +1311,9 @@ export class MemorySpecifier extends ComponentSpecifier {
         const [min, max] = qualifier ? requireFullLimits() : requireLimits();
 
         this.name = "memory";
-        this.min = boundscheck(min, 16);
-        this.max = boundscheck(max, 16);
         this.shared = qualifier;
+        this.min = boundscheckMemoryLimit(min);
+        this.max = boundscheckMemoryLimit(max);
     }
 }
 
@@ -1465,7 +1457,7 @@ export class MemoryElement extends Node {
         this.value = value;
         this.type = type;
 
-        if (integers.includes(type.value)) boundscheck(value, this.length * 8);
+        if (integers.includes(type.value)) boundscheck(value, this.length * 8, null);
     }
 }
 
@@ -2028,12 +2020,25 @@ const boundscheck = function(identity, width=32, signed=false) {
 
     if (number < lower || number > upper) {
 
+        const determiner = width === 8 ? "an" : "a";
         const problem = number < lower ? "low" : "high";
-        const expected = `${width}-bit ${signed ? "" : "un" }signed integer`;
+        const type = tertiary(signed, "signed", "unsigned", "agnostic");
+        const expected = `${determiner} ${width}-bit ${type} integer`;
 
         throw new BoundsError(identity, problem, expected);
 
     } else return identity;
+};
+
+const boundscheckMemoryLimit = function(limit) {
+
+    if (limit === undefined) return limit;
+
+    const value = evaluateLiteral(limit);
+
+    if (value < 0) throw new BoundsError(limit, "low", "a page limit");
+    else if (value > 65536) throw new BoundsError(limit, "high", "a page limit");
+    else return limit;
 };
 
 const evaluate = function(token, ...values) {

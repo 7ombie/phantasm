@@ -1,13 +1,21 @@
 /* --{ THE HELPERS LIBRARY }--{ /assembler/helpers.js }---------------------- *
 
-This little library exports a bunch of generic functions that are useful
-in almost every program. */
+This tiny library exports a bunch of generic helper functions. */
 
 export const put = console.log;
 
 export const not = value => ! value;
 
 export const iife = lambda => lambda();
+
+export const tertiary = function(predicate, onTrue, onFalse, onNull) {
+
+    /* This helper takes a ternary predicate and three arbitrary values.
+    The helper returns the first value when the predicate is `true`, the
+    second when it is `false`, and the third when it is `null`. */
+
+    return predicate === null ? onNull : (predicate ? onTrue : onFalse);
+};
 
 export const stack = function(lambda) {
 
