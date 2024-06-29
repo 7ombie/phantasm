@@ -27,18 +27,6 @@ let FUTURE_TOKEN;    // the `Token` instance after the next `Token` instance
 let GLOBAL_CONTEXT;  // tracks whether the context is global or not (local)
 let INITIALIZER;     // tracks whether an initializer has been defined yet
 
-/* --{ USEFUL STRING CONSTANTS }-------------------------------------------- */
-
-const [u8, s8, i8] = ["u8", "s8", "i8"];
-const [u16, s16, i16] = ["u16", "s16", "i16"];
-const [u32, s32, i32] = ["u32", "s32", "i32"];
-const [u64, s64, i64] = ["u64", "s64", "i64"];
-const [f32, f64] = ["f32", "f64"];
-
-const [shared, atomic] = ["shared", "atomic"];
-const [pointer, proxy, reference] = ["pointer", "proxy", "reference"];
-const [global, local, left, right] = ["global", "local", "left", "right"];
-
 /* --{ THE PARSER ERROR CLASSES }------------------------------------------- */
 
 class ParserError extends PhantasmError {
@@ -666,7 +654,7 @@ export class MemoryInstruction extends Instruction {
 
         if (acceptKeyword("as")) {
 
-            if (evaluate(this.type, i64)) {
+            if (evaluate(this.type, "i64")) {
 
                 this.datatype = requireUnsignedDatatype();
 
@@ -778,13 +766,13 @@ class RegisterAccessInstruction extends Instruction {
 
         } else { // `get local` or `get global`...
 
-            if (this.scope = acceptQualifier(local, global)) {
+            if (this.scope = acceptQualifier("local", "global")) {
 
-                if (GLOBAL_CONTEXT && evaluate(this.scope, local)) {
+                if (GLOBAL_CONTEXT && evaluate(this.scope, "local")) {
 
                     throw new ScopeError(this.scope);
 
-                } else this.global = this.scope.value === global;
+                } else this.global = this.scope.value === "global";
 
             } else {
 
@@ -811,7 +799,7 @@ class NumtypeInstruction extends Instruction {
 
         this.type = requireNumtype();
 
-        if (expression && [f32, f64].includes(this.type.value)) {
+        if (expression && ["f32", "f64"].includes(this.type.value)) {
 
             throw new ConstantError(this, "Floating point operations are");
 
@@ -935,17 +923,17 @@ class CarouselInstruction extends Instruction {
         };
 
         this.type = require(Primitive);
-        this.qualifier = acceptQualifier(left, right);
+        this.qualifier = acceptQualifier("left", "right");
 
         const qualifier = this.qualifier;
 
         // check that the mnemonic, type and qualifier are valid together...
 
-        if (nameInstruction(this) === "rotate" || evaluate(qualifier, left)) {
+        if (nameInstruction(this) === "rotate" || evaluate(qualifier, "left")) {
 
-            check("a sign-agnostic integer", i32, i64);
+            check("a sign-agnostic integer", "i32", "i64");
 
-        } else check("a signed integer", u32, s32, u64, s64); // shift right
+        } else check("a signed integer", "u32", "s32", "u64", "s64"); // shift right
     }
 }
 
@@ -1102,8 +1090,8 @@ export class RegisterDefinition extends ComponentDefinition {
 
         if (acceptKeyword("with")) {
 
-            if (evaluate(this.type, proxy)) throw new ProxyInitializerError();
-            else if (evaluate(this.type, pointer)) {
+            if (evaluate(this.type, "proxy")) throw new ProxyInitializerError();
+            else if (evaluate(this.type, "pointer")) {
 
                 this.block.push(boundscheck(require(Identity)));
 
@@ -1112,8 +1100,8 @@ export class RegisterDefinition extends ComponentDefinition {
                 const number = require(NumberLiteral);
                 const type = this.type.value;
 
-                if (type === i32) boundscheck(number, 32, null);
-                else if (type === i64) boundscheck(number, 64, null);
+                if (type === "i32") boundscheck(number, 32, null);
+                else if (type === "i64") boundscheck(number, 64, null);
 
                 this.block.push(number);
             }
@@ -1166,7 +1154,7 @@ export class MemoryDefinition extends ComponentDefinition {
         let min, max;
 
         super(location);
-        this.shared = acceptQualifier(shared);
+        this.shared = acceptQualifier("shared");
 
         const component = requireComponent("memory");
 
@@ -1303,7 +1291,7 @@ export class MemorySpecifier extends ComponentSpecifier {
 
     constructor(location) {
 
-        const qualifier = acceptQualifier(shared);
+        const qualifier = acceptQualifier("shared");
 
         requireComponent("memory");
         super(accept(Identifier), location);
@@ -1449,7 +1437,7 @@ export class MemoryElement extends Node {
 
     constructor(type, explicit, value) {
 
-        const integers = [i8, i16, i32, i64];
+        const integers = ["i8", "i16", "i32", "i64"];
         const lengths = {i8: 1, i16: 2, i32: 4, i64: 8, f32: 4, f64: 8};
 
         super(explicit ? type.location : value.location);
@@ -1566,9 +1554,9 @@ instructions.load = class LOAD extends MemoryInstruction {
 
         const type = this.type.value;
 
-        if ([i32, i64].includes(type) && acceptKeyword("as")) {
+        if (["i32", "i64"].includes(type) && acceptKeyword("as")) {
 
-            if (type === i64) this.datatype = requireGnosticDatatype();
+            if (type === "i64") this.datatype = requireGnosticDatatype();
             else this.datatype = requireLesserGnosticDatatype();
 
         } else this.datatype = undefined;
@@ -1588,9 +1576,9 @@ instructions.store = class STORE extends MemoryInstruction {
 
         const type = this.type.value;
 
-        if ([i32, i64].includes(type) && acceptKeyword("as")) {
+        if (["i32", "i64"].includes(type) && acceptKeyword("as")) {
 
-            if (type === i64) this.datatype = requireDatatype();
+            if (type === "i64") this.datatype = requireDatatype();
             else this.datatype = requireLesserDatatype();
 
         } else this.datatype = undefined;
@@ -1620,7 +1608,7 @@ instructions.push = class PUSH extends Instruction {
 
             this.name = CURRENT_TOKEN.value;
 
-            if (this.name === pointer) {
+            if (this.name === "pointer") {
 
                 if (this.target = acceptKeyword("null")) /* done */;
                 else this.target = boundscheck(require(Identity));
@@ -1629,15 +1617,15 @@ instructions.push = class PUSH extends Instruction {
 
         } else { // push [<numtype>]...
 
-            if (this.target = accept(NumberLiteral)) this.name = i32;
+            if (this.target = accept(NumberLiteral)) this.name = "i32";
             else {
 
                 this.name = requireNumtype().value;
                 this.target = require(NumberLiteral);
             }
 
-            if (this.name === i32) boundscheck(this.target, 32, null);
-            else if (this.name === i64) boundscheck(this.target, 64, null);
+            if (this.name === "i32") boundscheck(this.target, 32, null);
+            else if (this.name === "i64") boundscheck(this.target, 64, null);
         }
 
         return true; // `push` is always valid in a constant expression
@@ -1721,9 +1709,9 @@ instructions.wrap = class WRAP extends Instruction {
 
     parse() {
 
-        this.operand = requirePrimitiveType(i64);
+        this.operand = requirePrimitiveType("i64");
         requireKeyword("to");
-        this.result = requirePrimitiveType(i32);
+        this.result = requirePrimitiveType("i32");
     }
 }
 
@@ -1733,9 +1721,9 @@ instructions.promote = class PROMOTE extends Instruction {
 
     parse() {
 
-        this.operand = requirePrimitiveType(f32);
+        this.operand = requirePrimitiveType("f32");
         requireKeyword("to");
-        this.result = requirePrimitiveType(f64);
+        this.result = requirePrimitiveType("f64");
     }
 }
 
@@ -1745,9 +1733,9 @@ instructions.demote = class DEMOTE extends Instruction {
 
     parse() {
 
-        this.operand = requirePrimitiveType(f64);
+        this.operand = requirePrimitiveType("f64");
         requireKeyword("to");
-        this.result = requirePrimitiveType(f32);
+        this.result = requirePrimitiveType("f32");
     }
 }
 
@@ -1784,7 +1772,7 @@ instructions.bitcast = class BITCAST extends Instruction {
 
     parse() {
 
-        const map = {i32: f32, f32: i32, i64: f64, f64: i64};
+        const map = {i32: "f32", f32: "i32", i64: "f64", f64: "i64"};
 
         this.operand = requireNumtype();
         requireKeyword("to");
@@ -1804,7 +1792,7 @@ instructions.expand = class EXPAND extends Instruction {
         this.type = requireIntegerNumtype();
         requireKeyword("as");
 
-        if (this.type.value === i64) this.datatype = requireSignedDatatype();
+        if (this.type.value === "i64") this.datatype = requireSignedDatatype();
         else this.datatype = requireLesserSignedDatatype();
     }
 }
@@ -1839,7 +1827,7 @@ instructions.atomic.store = class ATOMIC_STORE extends MemoryInstruction {
 
         if (acceptKeyword("as")) {
 
-            if (evaluate(this.type, i64)) this.datatype = requireDatatype();
+            if (evaluate(this.type, "i64")) this.datatype = requireDatatype();
             else this.datatype = requireLesserDatatype();
 
         } else this.datatype = undefined;
@@ -2052,8 +2040,8 @@ const evaluate = function(token, ...values) {
 const requirePrimitiveType = function(type) {
 
     /* This helper is used when a specific primitive type (like `s8`, `i32`
-    or `utf8`) is required. It takes the type name as a string, and returns
-    the Primitive instance if found, else raises an error. */
+    or `u16`) is required. It takes the type name as a string, and returns
+    the `Primitive` instance, if present, else raises an error. */
 
     if (not(evaluate(require(Primitive), type))) {
 
@@ -2062,7 +2050,7 @@ const requirePrimitiveType = function(type) {
         throw new UnexpectedPrimitiveError(description, CURRENT_TOKEN);
 
     } else return CURRENT_TOKEN;
-}
+};
 
 const on = function(...types) {
 
@@ -2127,7 +2115,7 @@ const atValtype = function() {
 
     if (not(at(Primitive, Qualifier))) return false;
 
-    return [i32, i64, f32, f64, pointer, proxy].includes(NEXT_TOKEN.value);
+    return ["i32", "i64", "f32", "f64", "pointer", "proxy"].includes(NEXT_TOKEN.value);
 };
 
 const atReftype = function() {
@@ -2137,7 +2125,7 @@ const atReftype = function() {
 
     if (not(at(Qualifier))) return false;
 
-    return [pointer, proxy].includes(NEXT_TOKEN.value);
+    return ["pointer", "proxy"].includes(NEXT_TOKEN.value);
 };
 
 const acceptArrayName = function() {
@@ -2249,7 +2237,7 @@ const acceptReftype = function() {
 
     const qualifier = accept(Qualifier);
 
-    if (qualifier && [pointer, proxy].includes(qualifier.value)) {
+    if (qualifier && ["pointer", "proxy"].includes(qualifier.value)) {
 
         return qualifier;
     }
@@ -2269,7 +2257,7 @@ const acceptEncoding = function() {
     /* Accept any primitive type token that is a valid datatype for memory primers,
     then return it, else return `undefined`. */
 
-    if (evaluate(NEXT_TOKEN, i8, i16, i32, i64, f32, f64)) return advance();
+    if (evaluate(NEXT_TOKEN, "i8", "i16", "i32", "i64", "f32", "f64")) return advance();
 };
 
 const requireGivenType = function(description, ...names) {
@@ -2291,72 +2279,72 @@ const requireGivenType = function(description, ...names) {
 
 const requireFloatType = requireGivenType(
     "a 32 or 64-bit, float",
-    f32, f64
+    "f32", "f64"
 );
 
 const requireNumtype = requireGivenType(
     "a 32 or 64-bit, float or agnostic integer",
-    i32, i64, f32, f64
+    "i32", "i64", "f32", "f64"
 );
 
 const requireGnosticNumtype = requireGivenType(
     "a 32 or 64-bit, float or gnostic integer",
-    u32, s32, u64, s64, f32, f64
+    "u32", "s32", "u64", "s64", "f32", "f64"
 );
 
 const requireIntegerNumtype = requireGivenType(
     "a 32 or 64-bit, agnostic integer",
-    i32, i64
+    "i32", "i64"
 );
 
 const requireGnosticIntegerNumtype = requireGivenType(
     "a 32 or 64-bit, gnostic integer",
-    u32, s32, u64, s64
+    "u32", "s32", "u64", "s64"
 );
 
 const requireGnosticWordType = requireGivenType(
     "the `s32` or `u32`",
-    u32, s32
+    "u32", "s32"
 );
 
 const requireDatatype = requireGivenType(
     "the `i8`, `i16` or `i32`",
-    i8, i16, i32
+    "i8", "i16", "i32"
 );
 
 const requireGnosticDatatype = requireGivenType(
     "an 8, 16 or 32-bit, gnostic integer",
-    u8, s8, u16, s16, u32, s32
+    "u8", "s8", "u16", "s16", "u32", "s32"
 );
 
 const requireLesserGnosticDatatype = requireGivenType(
     "an 8 or 16-bit, gnostic integer",
-    u8, s8, u16, s16
+    "u8", "s8", "u16", "s16"
 );
 
 const requireLesserDatatype = requireGivenType(
     "the `i8` or `i16`",
-    i8, i16
+    "i8", "i16"
 );
 
 const requireSignedDatatype = requireGivenType(
     "the `s8`, `s16` or `s32`",
-    s8, s16, s32
+    "s8", "s16", "s32"
 );
 
 const requireLesserSignedDatatype = requireGivenType(
     "the `s8` or `s16`",
-    s8, s16
+    "s8", "s16"
 );
 
 const requireUnsignedDatatype = requireGivenType(
     "the `u8`, `u16` or `u32`",
-    u8, u16, u32
+    "u8", "u16", "u32"
 );
 
 const requireLesserUnsignedDatatype = requireGivenType(
     "the `u8` or `u16`",
-    u8, u16
+    "u8", "u16"
 );
 
 const requireIdentities = stack(function(push) {
@@ -2386,7 +2374,7 @@ const requireTableQualifier = function() {
 
     const qualifier = require(Qualifier);
 
-    if ([reference, pointer, proxy].includes(qualifier.value)) return qualifier;
+    if (["reference", "pointer", "proxy"].includes(qualifier.value)) return qualifier;
     else throw new InvalidTableQualifierError(qualifier);
 };
 
@@ -2534,7 +2522,7 @@ const resolveInstruction = function() {
     ensure that the prefix is valid for the operator. The helper returns
     the instruction class and the operator token. */
 
-    const atomize = acceptQualifier(atomic);
+    const atomize = acceptQualifier("atomic");
     const operation = accept(Operation);
 
     if (atomize) {
@@ -2765,15 +2753,15 @@ const nameNextComponent = function(description) {
 
         return "function";
 
-    } else if (at(Component) && ["variable", "constant"].includes(value)) {
+    } else if (atToken(Component, "variable") || atToken(Component, "constant")) {
 
         return value;
 
-    } else if (atToken(Component, "memory") || atToken(Qualifier, shared)) {
+    } else if (atToken(Component, "memory") || atToken(Qualifier, "shared")) {
 
         return "memory";
 
-    } else if (at(Qualifier) && [reference, pointer, proxy].includes(value)) {
+    } else if (at(Qualifier) && ["reference", "pointer", "proxy"].includes(value)) {
 
         return "table";
 
